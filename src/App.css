@@ -217,9 +217,9 @@ button {
 }
 
 .active-transport-icon {
-  color: #f4ffd5;
-  border-color: #445f22;
-  background: #2a391b;
+  color: #dff4ff;
+  border-color: #2d6f94;
+  background: #173447;
 }
 
 .transport-icon-button:disabled {
@@ -309,8 +309,8 @@ button {
 }
 
 .active-tree-row {
-  color: #f4ffd5;
-  background: #445f22;
+  color: #dff4ff;
+  background: #244f68;
 }
 
 .tree-loading {
@@ -470,11 +470,11 @@ tbody tr:focus {
 }
 
 tbody tr.selected-row {
-  background: #445f22;
+  background: #244f68;
 }
 
 tbody tr.selected-row td:first-child {
-  color: #f4ffd5;
+  color: #dff4ff;
   font-weight: 800;
 }
 
@@ -611,18 +611,18 @@ tbody tr.selected-row td:first-child {
 
 .theme-light tbody tr.selected-row,
 .theme-light .active-tree-row {
-  color: #1f2a12;
-  background: #cddf9a;
+  color: #0f2d3f;
+  background: #b9dff2;
 }
 
 .theme-light tbody tr.selected-row td:first-child {
-  color: #1f2a12;
+  color: #0f2d3f;
 }
 
 .theme-light .active-transport-icon {
-  color: #1f2a12;
-  border-color: #9db65d;
-  background: #d7e8a8;
+  color: #0f2d3f;
+  border-color: #75b6d6;
+  background: #c9e9f7;
 }
 
 .theme-light .context-menu {
