@@ -11,3 +11,12 @@ pub struct AudioFileMetadata {
     pub sample_rate: Option<u32>,
     pub channel_count: Option<usize>,
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileBrowserEntry {
+    pub name: String,
+    pub path: String,
+    pub is_directory: bool,
+    pub audio_file: Option<AudioFileMetadata>,
+}

@@ -6,7 +6,17 @@ import {
   type KeyboardEvent,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileAudio,
+  Folder,
+  HardDrive,
+  Pause,
+  Play,
+  Repeat,
+  Square,
+} from "lucide-react";
 import "./App.css";
 
 type AudioFileMetadata = {
@@ -19,11 +29,20 @@ type AudioFileMetadata = {
   channelCount: number | null;
 };
 
+type FileBrowserEntry = {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  audioFile: AudioFileMetadata | null;
+};
+
 type PlaybackStatus = "stopped" | "playing" | "paused";
 
 type WaveformCanvasProps = {
   peaks: number[];
 };
+
+const ROOT_KEY = "__roots__";
 
 function WaveformCanvas({ peaks }: WaveformCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -46,7 +65,7 @@ function WaveformCanvas({ peaks }: WaveformCanvasProps) {
     context.setTransform(scale, 0, 0, scale, 0, 0);
 
     context.clearRect(0, 0, rect.width, rect.height);
-    context.fillStyle = "#111318";
+    context.fillStyle = "#0e1217";
     context.fillRect(0, 0, rect.width, rect.height);
 
     if (peaks.length === 0) {
@@ -58,7 +77,7 @@ function WaveformCanvas({ peaks }: WaveformCanvasProps) {
     const centerY = rect.height / 2;
     const barWidth = Math.max(1, rect.width / peaks.length);
 
-    context.fillStyle = "#38bdf8";
+    context.fillStyle = "#7f8da0";
     peaks.forEach((peak, index) => {
       const height = Math.max(1, peak * rect.height * 0.86);
       const x = index * barWidth;
@@ -71,17 +90,21 @@ function WaveformCanvas({ peaks }: WaveformCanvasProps) {
 }
 
 function App() {
-  const [folderPath, setFolderPath] = useState("");
+  const [treeEntries, setTreeEntries] = useState<Record<string, FileBrowserEntry[]>>({});
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
+  const [currentDirectory, setCurrentDirectory] = useState<string | null>(null);
   const [files, setFiles] = useState<AudioFileMetadata[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
   const [playbackStatus, setPlaybackStatus] =
     useState<PlaybackStatus>("stopped");
+  const [isLooping, setIsLooping] = useState(false);
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [isLoadingWaveform, setIsLoadingWaveform] = useState(false);
   const [waveformError, setWaveformError] = useState("");
   const [error, setError] = useState("");
+  const [browserError, setBrowserError] = useState("");
 
   const filteredFiles = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -99,11 +122,16 @@ function App() {
   }, [files, searchQuery]);
 
   const selectedFile =
-    filteredFiles.find((file) => file.path === selectedPath) ?? null;
+    filteredFiles.find((file) => file.path === selectedPath) ??
+    files.find((file) => file.path === selectedPath) ??
+    null;
+
+  useEffect(() => {
+    loadDirectory(null, ROOT_KEY);
+  }, []);
 
   useEffect(() => {
     if (filteredFiles.length === 0) {
-      setSelectedPath(null);
       return;
     }
 
@@ -153,50 +181,66 @@ function App() {
     };
   }, [selectedFile]);
 
-  async function chooseFolder() {
-    try {
-      const selectedFolder = await open({
-        directory: true,
-        multiple: false,
-        title: "Select sample folder",
-      });
+  async function loadDirectory(path: string | null, cacheKey = path ?? ROOT_KEY) {
+    setLoadingPaths((paths) => new Set(paths).add(cacheKey));
+    setBrowserError("");
 
-      if (typeof selectedFolder === "string") {
-        setFolderPath(selectedFolder);
-        setError("");
+    try {
+      const entries = await invoke<FileBrowserEntry[]>("list_directory", { path });
+      setTreeEntries((previous) => ({ ...previous, [cacheKey]: entries }));
+
+      if (path) {
+        const audioFiles = entries
+          .filter((entry) => !entry.isDirectory && entry.audioFile)
+          .map((entry) => entry.audioFile as AudioFileMetadata);
+        setFiles(audioFiles);
+        setCurrentDirectory(path);
+        setSelectedPath(audioFiles[0]?.path ?? null);
+        setSearchQuery("");
+        setPlaybackStatus("stopped");
       }
-    } catch (dialogError: unknown) {
-      setError(`Could not open folder picker: ${String(dialogError)}`);
+    } catch (directoryError: unknown) {
+      setBrowserError(String(directoryError));
+    } finally {
+      setLoadingPaths((paths) => {
+        const nextPaths = new Set(paths);
+        nextPaths.delete(cacheKey);
+        return nextPaths;
+      });
     }
   }
 
-  async function scanFolder() {
-    const trimmedPath = folderPath.trim();
+  async function toggleDirectory(path: string) {
+    const isExpanded = expandedPaths.has(path);
 
-    if (!trimmedPath) {
-      setError("Enter a folder path to scan.");
-      setFiles([]);
-      setSelectedPath(null);
+    if (isExpanded) {
+      setExpandedPaths((paths) => {
+        const nextPaths = new Set(paths);
+        nextPaths.delete(path);
+        return nextPaths;
+      });
       return;
     }
 
-    setIsScanning(true);
-    setError("");
+    setExpandedPaths((paths) => new Set(paths).add(path));
 
-    try {
-      const scannedFiles = await invoke<AudioFileMetadata[]>("scan_folder", {
-        folderPath: trimmedPath,
-      });
-      setFiles(scannedFiles);
-      setSelectedPath(scannedFiles[0]?.path ?? null);
-      setPlaybackStatus("stopped");
-    } catch (scanError: unknown) {
-      setFiles([]);
-      setSelectedPath(null);
-      setError(String(scanError));
-    } finally {
-      setIsScanning(false);
+    if (!treeEntries[path]) {
+      await loadDirectory(path);
+    } else {
+      await loadDirectory(path);
     }
+  }
+
+  async function selectAudioFile(file: AudioFileMetadata) {
+    setFiles((currentFiles) => {
+      if (currentFiles.some((currentFile) => currentFile.path === file.path)) {
+        return currentFiles;
+      }
+
+      return [file, ...currentFiles];
+    });
+    setSelectedPath(file.path);
+    await playFile(file);
   }
 
   function formatBytes(bytes: number) {
@@ -250,8 +294,15 @@ function App() {
       return;
     }
 
+    await playFile(selectedFile);
+  }
+
+  async function playFile(file: AudioFileMetadata) {
     try {
-      await invoke("play_file", { filePath: selectedFile.path });
+      await invoke("play_file_with_loop", {
+        filePath: file.path,
+        loopEnabled: isLooping,
+      });
       setPlaybackStatus("playing");
       setError("");
     } catch (playbackError: unknown) {
@@ -283,6 +334,25 @@ function App() {
       setPlaybackStatus("stopped");
     } catch (playbackError: unknown) {
       setError(`Could not stop playback: ${String(playbackError)}`);
+    }
+  }
+
+  async function toggleLoop() {
+    const nextLoopState = !isLooping;
+    setIsLooping(nextLoopState);
+
+    if (selectedFile && playbackStatus !== "stopped") {
+      try {
+        await invoke("play_file_with_loop", {
+          filePath: selectedFile.path,
+          loopEnabled: nextLoopState,
+        });
+        setPlaybackStatus("playing");
+        setError("");
+      } catch (playbackError: unknown) {
+        setPlaybackStatus("stopped");
+        setError(`Could not update loop playback: ${String(playbackError)}`);
+      }
     }
   }
 
@@ -329,74 +399,64 @@ function App() {
     }
   }
 
+  function renderTree(entries: FileBrowserEntry[] = [], depth = 0) {
+    return entries.map((entry) => {
+      const isExpanded = expandedPaths.has(entry.path);
+      const isLoading = loadingPaths.has(entry.path);
+      const childEntries = treeEntries[entry.path] ?? [];
+
+      if (entry.isDirectory) {
+        return (
+          <div className="tree-node" key={entry.path}>
+            <button
+              className={`tree-row ${currentDirectory === entry.path ? "active-tree-row" : ""}`}
+              style={{ paddingLeft: `${8 + depth * 14}px` }}
+              type="button"
+              onClick={() => toggleDirectory(entry.path)}
+            >
+              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              {depth === 0 ? <HardDrive size={16} /> : <Folder size={16} />}
+              <span>{entry.name}</span>
+              {isLoading ? <span className="tree-loading">...</span> : null}
+            </button>
+            {isExpanded ? renderTree(childEntries, depth + 1) : null}
+          </div>
+        );
+      }
+
+      if (!entry.audioFile) {
+        return null;
+      }
+
+      return (
+        <button
+          className={`tree-row audio-tree-row ${
+            selectedPath === entry.path ? "active-tree-row" : ""
+          }`}
+          key={entry.path}
+          style={{ paddingLeft: `${30 + depth * 14}px` }}
+          type="button"
+          onClick={() => selectAudioFile(entry.audioFile as AudioFileMetadata)}
+        >
+          <FileAudio size={15} />
+          <span>{entry.name}</span>
+        </button>
+      );
+    });
+  }
+
   return (
     <main className="app-shell" onKeyDown={handleAppKeyDown}>
-      <aside className="sidebar">
-        <div>
-          <p className="eyebrow">Resonix</p>
-          <h1>Sample Library</h1>
-        </div>
-        <p className="sidebar-copy">
-          Scan a local folder for WAV, MP3, FLAC, and OGG files.
-        </p>
-      </aside>
-
-      <section className="content">
-        <form
-          className="scan-bar"
-          onSubmit={(event) => {
-            event.preventDefault();
-            scanFolder();
-          }}
-        >
-          <label htmlFor="folder-path">Folder path</label>
-          <div className="scan-controls">
-            <input
-              id="folder-path"
-              value={folderPath}
-              onChange={(event) => setFolderPath(event.currentTarget.value)}
-              placeholder="C:\\Users\\jonec\\Music\\Samples"
-            />
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={chooseFolder}
-              disabled={isScanning}
-            >
-              Browse
-            </button>
-            <button type="submit" disabled={isScanning}>
-              {isScanning ? "Scanning..." : "Scan"}
-            </button>
+      <section className="player-region">
+        <header className="title-bar">
+          <div>
+            <span className="app-mark">Resonix</span>
+            <span className="title-file">
+              {selectedFile ? selectedFile.filename : "No file selected"}
+            </span>
           </div>
-        </form>
-
-        <section className="browser-toolbar" aria-label="File browser controls">
-          <div className="search-field">
-            <label htmlFor="file-search">Search files</label>
-            <input
-              id="file-search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
-              placeholder="Name, path, or extension"
-              disabled={files.length === 0}
-            />
-          </div>
-          <div className="browser-summary">
-            <span>{files.length.toLocaleString()} scanned</span>
-            <span>{filteredFiles.length.toLocaleString()} shown</span>
-          </div>
-        </section>
-
-        {selectedFile ? (
-          <section className="selection-panel" aria-label="Selected file">
-            <div>
-              <p className="selection-label">Selected</p>
-              <p className="selection-name">{selectedFile.filename}</p>
-            </div>
-            <p className="selection-path">{selectedFile.path}</p>
-          </section>
-        ) : null}
+          <span className="title-status">{playbackStatus}</span>
+        </header>
 
         <section className="preview-panel" aria-label="Waveform preview">
           <div className="preview-header">
@@ -420,18 +480,111 @@ function App() {
           ) : null}
         </section>
 
-        {error ? <p className="status error">{error}</p> : null}
-        {!error && isScanning ? <p className="status">Scanning folder...</p> : null}
-        {!error && !isScanning && files.length === 0 ? (
-          <p className="status">Choose a folder, then scan to populate the browser.</p>
+        <section className="transport-bar" aria-label="Transport controls">
+          <div className="transport-file">
+            <span className="transport-label">Transport</span>
+            <span>{selectedFile?.filename ?? "No file selected"}</span>
+          </div>
+          <div className="transport-controls">
+            <button
+              className="transport-icon-button"
+              type="button"
+              onClick={playSelectedFile}
+              disabled={!selectedFile}
+              aria-label="Play selected file"
+              title="Play"
+            >
+              <Play aria-hidden="true" fill="currentColor" size={22} />
+            </button>
+            <button
+              className="transport-icon-button"
+              type="button"
+              onClick={togglePause}
+              disabled={playbackStatus === "stopped"}
+              aria-label={
+                playbackStatus === "paused" ? "Resume playback" : "Pause playback"
+              }
+              title={playbackStatus === "paused" ? "Resume" : "Pause"}
+            >
+              <Pause aria-hidden="true" fill="currentColor" size={22} />
+            </button>
+            <button
+              className="transport-icon-button"
+              type="button"
+              onClick={stopPlayback}
+              disabled={playbackStatus === "stopped"}
+              aria-label="Stop playback"
+              title="Stop"
+            >
+              <Square aria-hidden="true" fill="currentColor" size={20} />
+            </button>
+            <button
+              className={`transport-icon-button ${isLooping ? "active-transport-icon" : ""}`}
+              type="button"
+              onClick={toggleLoop}
+              aria-pressed={isLooping}
+              aria-label={isLooping ? "Turn loop off" : "Turn loop on"}
+              title={isLooping ? "Loop on" : "Loop off"}
+            >
+              <Repeat aria-hidden="true" size={20} />
+            </button>
+          </div>
+        </section>
+      </section>
+
+      <section className="workspace">
+        <aside className="sidebar">
+          <div className="sidebar-header">
+            <p className="eyebrow">Browser</p>
+          </div>
+          <div className="file-tree" aria-label="File browser tree">
+            {renderTree(treeEntries[ROOT_KEY])}
+            {loadingPaths.has(ROOT_KEY) ? (
+              <p className="tree-status">Loading drives...</p>
+            ) : null}
+            {browserError ? <p className="tree-status error">{browserError}</p> : null}
+          </div>
+        </aside>
+
+        <section className="content">
+        <section className="browser-toolbar" aria-label="File browser controls">
+          <div className="search-field">
+            <label htmlFor="file-search">Search current folder</label>
+            <input
+              id="file-search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.currentTarget.value)}
+              placeholder="Name, path, or extension"
+              disabled={files.length === 0}
+            />
+          </div>
+          <div className="browser-summary">
+            <span>{files.length.toLocaleString()} in folder</span>
+            <span>{filteredFiles.length.toLocaleString()} shown</span>
+          </div>
+        </section>
+
+        {selectedFile ? (
+          <section className="selection-panel" aria-label="Selected file">
+            <div>
+              <p className="selection-label">Selected</p>
+              <p className="selection-name">{selectedFile.filename}</p>
+            </div>
+            <p className="selection-path">{selectedFile.path}</p>
+          </section>
         ) : null}
-        {!error &&
-        !isScanning &&
-        files.length > 0 &&
-        filteredFiles.length === 0 ? (
+
+        {error ? <p className="status error">{error}</p> : null}
+        {!error && !currentDirectory ? (
+          <p className="status">Choose a folder in the sidebar to browse audio files.</p>
+        ) : null}
+        {!error && currentDirectory && files.length === 0 ? (
+          <p className="status">No supported audio files in this folder.</p>
+        ) : null}
+        {!error && files.length > 0 && filteredFiles.length === 0 ? (
           <p className="status">
-            No files match "{searchQuery.trim()}". Clear the search to show all scanned
-            files.
+            No files match "{searchQuery.trim()}". Clear the search to show all files in
+            this folder.
           </p>
         ) : null}
 
@@ -439,7 +592,7 @@ function App() {
           className="table-wrap"
           onKeyDown={handleBrowserKeyDown}
           role="region"
-          aria-label="Scanned audio files"
+          aria-label="Audio files in selected folder"
         >
           <table>
             <thead>
@@ -450,7 +603,6 @@ function App() {
                 <th>Duration</th>
                 <th>Sample Rate</th>
                 <th>Channels</th>
-                <th>Path</th>
               </tr>
             </thead>
             <tbody>
@@ -460,7 +612,10 @@ function App() {
                   key={file.path}
                   tabIndex={0}
                   aria-selected={file.path === selectedPath}
-                  onClick={() => setSelectedPath(file.path)}
+                  onClick={() => {
+                    setSelectedPath(file.path);
+                    playFile(file);
+                  }}
                   onFocus={() => setSelectedPath(file.path)}
                 >
                   <td>{file.filename}</td>
@@ -473,41 +628,13 @@ function App() {
                       : `${file.sampleRate.toLocaleString()} Hz`}
                   </td>
                   <td>{file.channelCount ?? "-"}</td>
-                  <td className="path-cell">{file.path}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </section>
-
-      <footer className="transport-bar" aria-label="Transport controls">
-        <div className="transport-file">
-          <span className="transport-label">Transport</span>
-          <span>{selectedFile?.filename ?? "No file selected"}</span>
-        </div>
-        <div className="transport-controls">
-          <button type="button" onClick={playSelectedFile} disabled={!selectedFile}>
-            Play
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={togglePause}
-            disabled={playbackStatus === "stopped"}
-          >
-            {playbackStatus === "paused" ? "Resume" : "Pause"}
-          </button>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={stopPlayback}
-            disabled={playbackStatus === "stopped"}
-          >
-            Stop
-          </button>
-        </div>
-      </footer>
+      </section>
     </main>
   );
 }

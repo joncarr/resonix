@@ -5,7 +5,7 @@ use std::{
     thread,
 };
 
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 
 pub struct PlaybackController {
     sender: Sender<PlaybackCommand>,
@@ -14,6 +14,7 @@ pub struct PlaybackController {
 enum PlaybackCommand {
     Play {
         file_path: String,
+        loop_enabled: bool,
         reply: Sender<Result<(), String>>,
     },
     Pause {
@@ -36,8 +37,12 @@ impl PlaybackController {
 
             while let Ok(command) = receiver.recv() {
                 match command {
-                    PlaybackCommand::Play { file_path, reply } => {
-                        let _ = reply.send(playback.play_file(&file_path));
+                    PlaybackCommand::Play {
+                        file_path,
+                        loop_enabled,
+                        reply,
+                    } => {
+                        let _ = reply.send(playback.play_file(&file_path, loop_enabled));
                     }
                     PlaybackCommand::Pause { reply } => {
                         playback.pause();
@@ -58,8 +63,12 @@ impl PlaybackController {
         Self { sender }
     }
 
-    pub fn play_file(&self, file_path: String) -> Result<(), String> {
-        self.send_command(|reply| PlaybackCommand::Play { file_path, reply })
+    pub fn play_file(&self, file_path: String, loop_enabled: bool) -> Result<(), String> {
+        self.send_command(|reply| PlaybackCommand::Play {
+            file_path,
+            loop_enabled,
+            reply,
+        })
     }
 
     pub fn pause(&self) -> Result<(), String> {
@@ -101,7 +110,7 @@ impl PlaybackManager {
         }
     }
 
-    pub fn play_file(&mut self, file_path: &str) -> Result<(), String> {
+    pub fn play_file(&mut self, file_path: &str, loop_enabled: bool) -> Result<(), String> {
         self.stop();
         self.ensure_output_stream()?;
 
@@ -113,7 +122,12 @@ impl PlaybackManager {
             .ok_or_else(|| "Playback output is unavailable.".to_string())?;
         let sink = Sink::try_new(handle).map_err(|error| error.to_string())?;
 
-        sink.append(source);
+        if loop_enabled {
+            sink.append(source.repeat_infinite());
+        } else {
+            sink.append(source);
+        }
+
         self.sink = Some(sink);
 
         Ok(())

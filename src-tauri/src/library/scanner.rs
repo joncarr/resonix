@@ -41,7 +41,7 @@ pub fn scan_audio_folder(folder_path: &str) -> Result<Vec<AudioFileMetadata>, St
     Ok(files)
 }
 
-fn is_supported_audio_file(path: &Path) -> bool {
+pub fn is_supported_audio_file(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .map(|extension| {
@@ -52,7 +52,7 @@ fn is_supported_audio_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn read_audio_metadata(path: &Path) -> Result<AudioFileMetadata, String> {
+pub fn read_audio_metadata(path: &Path) -> Result<AudioFileMetadata, String> {
     let metadata = path.metadata().map_err(|error| error.to_string())?;
     let filename = path
         .file_name()
@@ -78,7 +78,7 @@ fn read_audio_metadata(path: &Path) -> Result<AudioFileMetadata, String> {
     })
 }
 
-fn normalize_path(path: &Path) -> String {
+pub fn normalize_path(path: &Path) -> String {
     path.canonicalize()
         .unwrap_or_else(|_| PathBuf::from(path))
         .to_string_lossy()
