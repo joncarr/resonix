@@ -6,7 +6,7 @@ use std::{
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::library::metadata::AudioFileMetadata;
+use crate::library::metadata::{AppRestoreState, AudioFileMetadata};
 
 #[derive(Clone)]
 pub struct CacheDatabase {
@@ -94,10 +94,138 @@ impl CacheDatabase {
                     path TEXT PRIMARY KEY,
                     added_at INTEGER NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS recent_folders (
+                    path TEXT PRIMARY KEY,
+                    last_opened_at INTEGER NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS app_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
                 ",
             )
             .map_err(|error| error.to_string())?;
         Ok(())
+    }
+
+    pub fn add_favorite(&self, path: &str) -> Result<(), String> {
+        let connection = self.connection()?;
+        connection
+            .execute(
+                "
+                INSERT INTO favorites (path, added_at)
+                VALUES (?1, strftime('%s', 'now'))
+                ON CONFLICT(path) DO UPDATE SET added_at = excluded.added_at
+                ",
+                params![path],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    pub fn remove_favorite(&self, path: &str) -> Result<(), String> {
+        let connection = self.connection()?;
+        connection
+            .execute("DELETE FROM favorites WHERE path = ?1", params![path])
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    pub fn favorite_paths(&self) -> Result<Vec<String>, String> {
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare("SELECT path FROM favorites ORDER BY added_at DESC")
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn is_favorite(&self, path: &str) -> Result<bool, String> {
+        let connection = self.connection()?;
+        let exists: Option<i64> = connection
+            .query_row(
+                "SELECT 1 FROM favorites WHERE path = ?1",
+                params![path],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        Ok(exists.is_some())
+    }
+
+    pub fn remember_recent_folder(&self, path: &str) -> Result<(), String> {
+        let connection = self.connection()?;
+        connection
+            .execute(
+                "
+                INSERT INTO recent_folders (path, last_opened_at)
+                VALUES (?1, strftime('%s', 'now'))
+                ON CONFLICT(path) DO UPDATE SET last_opened_at = excluded.last_opened_at
+                ",
+                params![path],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    pub fn recent_folders(&self, limit: usize) -> Result<Vec<String>, String> {
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare(
+                "
+                SELECT path
+                FROM recent_folders
+                ORDER BY last_opened_at DESC
+                LIMIT ?1
+                ",
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map(params![limit as i64], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn set_app_state(&self, key: &str, value: Option<&str>) -> Result<(), String> {
+        let connection = self.connection()?;
+        connection
+            .execute(
+                "
+                INSERT INTO app_state (key, value)
+                VALUES (?1, ?2)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                ",
+                params![key, value],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    pub fn restore_state(&self) -> Result<AppRestoreState, String> {
+        Ok(AppRestoreState {
+            last_directory: self.app_state_value("last_directory")?,
+            last_file: self.app_state_value("last_file")?,
+        })
+    }
+
+    fn app_state_value(&self, key: &str) -> Result<Option<String>, String> {
+        let connection = self.connection()?;
+        connection
+            .query_row(
+                "SELECT value FROM app_state WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())
     }
 
     fn cached_metadata(

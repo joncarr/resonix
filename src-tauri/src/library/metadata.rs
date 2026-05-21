@@ -20,3 +20,10 @@ pub struct FileBrowserEntry {
     pub is_directory: bool,
     pub audio_file: Option<AudioFileMetadata>,
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppRestoreState {
+    pub last_directory: Option<String>,
+    pub last_file: Option<String>,
+}

@@ -269,7 +269,29 @@ button {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 4px 3px 8px;
+  padding: 4px 3px 10px;
+}
+
+.sidebar-section {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #202630;
+  margin-bottom: 6px;
+}
+
+.sidebar-section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.sidebar-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 7px 4px;
+  color: #7f8da0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .tree-node {
@@ -645,6 +667,14 @@ tbody tr.selected-row td:first-child {
 .theme-light .status.error,
 .theme-light .tree-status.error {
   color: #b42318;
+}
+
+.theme-light .sidebar-section {
+  border-color: #d5dce6;
+}
+
+.theme-light .sidebar-section-title {
+  color: #64748b;
 }
 
 @media (max-width: 760px) {

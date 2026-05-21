@@ -19,6 +19,7 @@ import {
   Repeat,
   Square,
   Moon,
+  Star,
   Sun,
 } from "lucide-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -56,7 +57,13 @@ type ContextMenuState = {
   x: number;
   y: number;
   file: AudioFileMetadata;
+  isFavorite: boolean;
 } | null;
+
+type AppRestoreState = {
+  lastDirectory: string | null;
+  lastFile: string | null;
+};
 
 const ROOT_KEY = "__roots__";
 
@@ -191,6 +198,7 @@ function App() {
   const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
   const [currentDirectory, setCurrentDirectory] = useState<string | null>(null);
   const [files, setFiles] = useState<AudioFileMetadata[]>([]);
+  const [favoriteFiles, setFavoriteFiles] = useState<AudioFileMetadata[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [playbackStatus, setPlaybackStatus] =
@@ -232,8 +240,29 @@ function App() {
     null;
 
   useEffect(() => {
-    loadDirectory(null, ROOT_KEY);
+    initializeLibraryState();
   }, []);
+
+  async function initializeLibraryState() {
+    await Promise.all([loadDirectory(null, ROOT_KEY), loadFavorites()]);
+
+    try {
+      const restoreState = await invoke<AppRestoreState>("restore_app_state");
+      if (restoreState.lastDirectory) {
+        setExpandedPaths((paths) => new Set(paths).add(restoreState.lastDirectory as string));
+        const audioFiles = await loadDirectory(restoreState.lastDirectory);
+
+        if (
+          restoreState.lastFile &&
+          audioFiles.some((file) => file.path === restoreState.lastFile)
+        ) {
+          setSelectedPath(restoreState.lastFile);
+        }
+      }
+    } catch (restoreError: unknown) {
+      setBrowserError(String(restoreError));
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem("resonix-theme", theme);
@@ -334,7 +363,10 @@ function App() {
     return () => window.clearInterval(interval);
   }, [isLooping, playbackAnchor, playbackStatus, selectedFile]);
 
-  async function loadDirectory(path: string | null, cacheKey = path ?? ROOT_KEY) {
+  async function loadDirectory(
+    path: string | null,
+    cacheKey = path ?? ROOT_KEY,
+  ): Promise<AudioFileMetadata[]> {
     setLoadingPaths((paths) => new Set(paths).add(cacheKey));
     setBrowserError("");
 
@@ -353,15 +385,27 @@ function App() {
         setPlaybackAnchor(null);
         setSearchQuery("");
         setPlaybackStatus("stopped");
+        return audioFiles;
       }
+
+      return [];
     } catch (directoryError: unknown) {
       setBrowserError(String(directoryError));
+      return [];
     } finally {
       setLoadingPaths((paths) => {
         const nextPaths = new Set(paths);
         nextPaths.delete(cacheKey);
         return nextPaths;
       });
+    }
+  }
+
+  async function loadFavorites() {
+    try {
+      setFavoriteFiles(await invoke<AudioFileMetadata[]>("list_favorites"));
+    } catch (favoritesError: unknown) {
+      setBrowserError(String(favoritesError));
     }
   }
 
@@ -395,21 +439,34 @@ function App() {
       return [file, ...currentFiles];
     });
     setSelectedPath(file.path);
+    await rememberSelectedFile(file.path);
     await playFile(file, 0);
   }
 
-  function openContextMenu(
+  async function openContextMenu(
     event: MouseEvent<HTMLElement>,
     file: AudioFileMetadata,
   ) {
     event.preventDefault();
     event.stopPropagation();
     setSelectedPath(file.path);
+    const isFavorite = await invoke<boolean>("is_favorite", {
+      filePath: file.path,
+    });
     setContextMenu({
       x: event.clientX,
       y: event.clientY,
       file,
+      isFavorite,
     });
+  }
+
+  async function rememberSelectedFile(filePath: string) {
+    try {
+      await invoke("remember_selected_file", { filePath });
+    } catch {
+      // Selection restore is opportunistic and should not interrupt browsing.
+    }
   }
 
   function formatBytes(bytes: number) {
@@ -508,16 +565,32 @@ function App() {
     }
   }
 
-  async function runContextMenuAction(action: "play" | "reveal" | "copy") {
+  async function toggleFavorite(file: AudioFileMetadata, isFavorite: boolean) {
+    try {
+      await invoke(isFavorite ? "remove_favorite" : "add_favorite", {
+        filePath: file.path,
+      });
+      await loadFavorites();
+      setError("");
+    } catch (favoriteError: unknown) {
+      setError(`Could not update favorite: ${String(favoriteError)}`);
+    }
+  }
+
+  async function runContextMenuAction(
+    action: "play" | "reveal" | "copy" | "favorite",
+  ) {
     if (!contextMenu) {
       return;
     }
 
     const file = contextMenu.file;
+    const wasFavorite = contextMenu.isFavorite;
     setContextMenu(null);
 
     if (action === "play") {
       setSelectedPath(file.path);
+      await rememberSelectedFile(file.path);
       await playFile(file);
       return;
     }
@@ -527,7 +600,12 @@ function App() {
       return;
     }
 
-    await copyFilePath(file);
+    if (action === "copy") {
+      await copyFilePath(file);
+      return;
+    }
+
+    await toggleFavorite(file, wasFavorite);
   }
 
   async function togglePause() {
@@ -812,11 +890,42 @@ function App() {
             <p className="eyebrow">Browser</p>
           </div>
           <div className="file-tree" aria-label="File browser tree">
+            <section className="sidebar-section" aria-label="Favorites">
+              <p className="sidebar-section-title">
+                <Star size={13} />
+                Favorites
+              </p>
+              {favoriteFiles.length === 0 ? (
+                <p className="tree-status">No favorites yet.</p>
+              ) : (
+                favoriteFiles.map((file) => (
+                  <button
+                    className={`tree-row audio-tree-row ${
+                      selectedPath === file.path ? "active-tree-row" : ""
+                    }`}
+                    key={file.path}
+                    type="button"
+                    onClick={() => selectAudioFile(file)}
+                    onContextMenu={(event) => openContextMenu(event, file)}
+                  >
+                    <FileAudio size={15} />
+                    <span>{file.filename}</span>
+                  </button>
+                ))
+              )}
+            </section>
+
+            <section className="sidebar-section" aria-label="Drives">
+              <p className="sidebar-section-title">
+                <HardDrive size={13} />
+                Drives
+              </p>
             {renderTree(treeEntries[ROOT_KEY])}
             {loadingPaths.has(ROOT_KEY) ? (
               <p className="tree-status">Loading drives...</p>
             ) : null}
             {browserError ? <p className="tree-status error">{browserError}</p> : null}
+            </section>
           </div>
         </aside>
 
@@ -889,6 +998,7 @@ function App() {
                   onContextMenu={(event) => openContextMenu(event, file)}
                   onClick={() => {
                     setSelectedPath(file.path);
+                    rememberSelectedFile(file.path);
                     playFile(file, 0);
                   }}
                   onFocus={() => setSelectedPath(file.path)}
@@ -937,6 +1047,13 @@ function App() {
             onClick={() => runContextMenuAction("copy")}
           >
             Copy Path
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runContextMenuAction("favorite")}
+          >
+            {contextMenu.isFavorite ? "Remove from Favorites" : "Add to Favorites"}
           </button>
         </div>
       ) : null}

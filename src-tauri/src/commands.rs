@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use tauri::State;
 
 use crate::{
@@ -5,7 +7,7 @@ use crate::{
     library::{
         browser,
         database::CacheDatabase,
-        metadata::{AudioFileMetadata, FileBrowserEntry},
+        metadata::{AppRestoreState, AudioFileMetadata, FileBrowserEntry},
         scanner,
     },
 };
@@ -29,9 +31,106 @@ pub async fn list_directory(
     database: State<'_, CacheDatabase>,
 ) -> Result<Vec<FileBrowserEntry>, String> {
     let database = database.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || browser::list_directory(path, Some(&database)))
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(path) = &path {
+            database.remember_recent_folder(path)?;
+            database.set_app_state("last_directory", Some(path))?;
+        }
+
+        browser::list_directory(path, Some(&database))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn list_favorites(
+    database: State<'_, CacheDatabase>,
+) -> Result<Vec<AudioFileMetadata>, String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let paths = database.favorite_paths()?;
+        let mut favorites = Vec::new();
+
+        for path in paths {
+            let path_ref = Path::new(&path);
+            if path_ref.is_file() {
+                let metadata = database
+                    .metadata_for_path(path_ref, || scanner::read_audio_metadata(path_ref))?;
+                favorites.push(metadata);
+            }
+        }
+
+        Ok(favorites)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn add_favorite(
+    file_path: String,
+    database: State<'_, CacheDatabase>,
+) -> Result<(), String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || database.add_favorite(&file_path))
         .await
         .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn remove_favorite(
+    file_path: String,
+    database: State<'_, CacheDatabase>,
+) -> Result<(), String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || database.remove_favorite(&file_path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn is_favorite(
+    file_path: String,
+    database: State<'_, CacheDatabase>,
+) -> Result<bool, String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || database.is_favorite(&file_path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn list_recent_folders(
+    database: State<'_, CacheDatabase>,
+) -> Result<Vec<String>, String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || database.recent_folders(12))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn restore_app_state(
+    database: State<'_, CacheDatabase>,
+) -> Result<AppRestoreState, String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || database.restore_state())
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn remember_selected_file(
+    file_path: String,
+    database: State<'_, CacheDatabase>,
+) -> Result<(), String> {
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        database.set_app_state("last_file", Some(&file_path))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

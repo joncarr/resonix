@@ -21,6 +21,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::scan_folder,
             commands::list_directory,
+            commands::list_favorites,
+            commands::add_favorite,
+            commands::remove_favorite,
+            commands::is_favorite,
+            commands::list_recent_folders,
+            commands::restore_app_state,
+            commands::remember_selected_file,
             commands::play_file,
             commands::play_file_with_loop,
             commands::pause_playback,
