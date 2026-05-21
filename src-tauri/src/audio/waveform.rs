@@ -5,16 +5,33 @@ use symphonia::core::{
     io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
 };
 
+use crate::library::database::CacheDatabase;
+
 const DEFAULT_PEAK_COUNT: usize = 512;
 const MAX_PEAK_COUNT: usize = 4096;
 
-pub fn generate_waveform_peaks(
+pub fn generate_waveform_peaks_with_cache(
     file_path: &str,
     peak_count: Option<usize>,
+    database: Option<&CacheDatabase>,
 ) -> Result<Vec<f32>, String> {
     let requested_peak_count = peak_count
         .unwrap_or(DEFAULT_PEAK_COUNT)
         .clamp(1, MAX_PEAK_COUNT);
+
+    if let Some(database) = database {
+        return database.waveform_for_path(file_path, requested_peak_count, || {
+            generate_waveform_peaks_uncached(file_path, requested_peak_count)
+        });
+    }
+
+    generate_waveform_peaks_uncached(file_path, requested_peak_count)
+}
+
+fn generate_waveform_peaks_uncached(
+    file_path: &str,
+    requested_peak_count: usize,
+) -> Result<Vec<f32>, String> {
     let samples = decode_samples(file_path)?;
 
     if samples.is_empty() {

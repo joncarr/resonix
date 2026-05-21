@@ -2,10 +2,19 @@ mod audio;
 mod commands;
 mod library;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(audio::playback::PlaybackController::new())
+        .setup(|app| {
+            let app_data_dir = app.path().app_data_dir()?;
+            let database = library::database::CacheDatabase::new(app_data_dir)
+                .map_err(std::io::Error::other)?;
+            app.manage(database);
+            Ok(())
+        })
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

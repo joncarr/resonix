@@ -9,11 +9,14 @@ use symphonia::core::{
 };
 use walkdir::WalkDir;
 
-use crate::library::metadata::AudioFileMetadata;
+use crate::library::{database::CacheDatabase, metadata::AudioFileMetadata};
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "ogg"];
 
-pub fn scan_audio_folder(folder_path: &str) -> Result<Vec<AudioFileMetadata>, String> {
+pub fn scan_audio_folder_with_cache(
+    folder_path: &str,
+    database: Option<&CacheDatabase>,
+) -> Result<Vec<AudioFileMetadata>, String> {
     let root = Path::new(folder_path);
 
     if !root.exists() {
@@ -34,7 +37,13 @@ pub fn scan_audio_folder(folder_path: &str) -> Result<Vec<AudioFileMetadata>, St
             continue;
         }
 
-        files.push(read_audio_metadata(path)?);
+        let metadata = if let Some(database) = database {
+            database.metadata_for_path(path, || read_audio_metadata(path))?
+        } else {
+            read_audio_metadata(path)?
+        };
+
+        files.push(metadata);
     }
 
     files.sort_by(|a, b| a.filename.to_lowercase().cmp(&b.filename.to_lowercase()));

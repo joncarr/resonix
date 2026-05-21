@@ -1,13 +1,17 @@
 use std::{fs, path::Path};
 
 use crate::library::{
+    database::CacheDatabase,
     metadata::FileBrowserEntry,
     scanner::{is_supported_audio_file, normalize_path, read_audio_metadata},
 };
 
-pub fn list_directory(path: Option<String>) -> Result<Vec<FileBrowserEntry>, String> {
+pub fn list_directory(
+    path: Option<String>,
+    database: Option<&CacheDatabase>,
+) -> Result<Vec<FileBrowserEntry>, String> {
     match path {
-        Some(path) => list_directory_entries(Path::new(&path)),
+        Some(path) => list_directory_entries(Path::new(&path), database),
         None => Ok(list_roots()),
     }
 }
@@ -39,7 +43,10 @@ fn list_roots() -> Vec<FileBrowserEntry> {
     }
 }
 
-fn list_directory_entries(path: &Path) -> Result<Vec<FileBrowserEntry>, String> {
+fn list_directory_entries(
+    path: &Path,
+    database: Option<&CacheDatabase>,
+) -> Result<Vec<FileBrowserEntry>, String> {
     if !path.exists() {
         return Err("Directory path does not exist.".to_string());
     }
@@ -65,11 +72,17 @@ fn list_directory_entries(path: &Path) -> Result<Vec<FileBrowserEntry>, String> 
                 audio_file: None,
             });
         } else if file_type.is_file() && is_supported_audio_file(&path) {
+            let metadata = if let Some(database) = database {
+                database.metadata_for_path(&path, || read_audio_metadata(&path))?
+            } else {
+                read_audio_metadata(&path)?
+            };
+
             audio_files.push(FileBrowserEntry {
                 name,
                 path: normalize_path(&path),
                 is_directory: false,
-                audio_file: Some(read_audio_metadata(&path)?),
+                audio_file: Some(metadata),
             });
         }
     }
