@@ -1,6 +1,7 @@
 mod audio;
 mod commands;
 mod library;
+mod platform;
 
 use tauri::Manager;
 
@@ -29,6 +30,7 @@ pub fn run() {
             commands::restore_app_state,
             commands::remember_selected_file,
             commands::remember_theme,
+            commands::start_file_drag,
             commands::play_file,
             commands::play_file_with_loop,
             commands::pause_playback,

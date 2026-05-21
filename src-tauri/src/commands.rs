@@ -10,6 +10,7 @@ use crate::{
         metadata::{AppRestoreState, AudioFileMetadata, FileBrowserEntry},
         scanner,
     },
+    platform::file_drag,
 };
 
 #[tauri::command]
@@ -146,6 +147,11 @@ pub async fn remember_theme(
     tauri::async_runtime::spawn_blocking(move || database.set_app_state("theme", Some(&theme)))
         .await
         .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub fn start_file_drag(file_path: String) -> Result<(), String> {
+    file_drag::start_file_drag(&file_path)
 }
 
 #[tauri::command]

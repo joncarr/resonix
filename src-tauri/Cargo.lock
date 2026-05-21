@@ -3267,6 +3267,8 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "walkdir",
+ "windows 0.61.3",
+ "windows-core 0.61.2",
 ]
 
 [[package]]

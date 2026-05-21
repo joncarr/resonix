@@ -538,6 +538,14 @@ tbody tr {
   cursor: pointer;
 }
 
+tbody tr[data-file-drag-source="true"] {
+  cursor: grab;
+}
+
+tbody tr[data-file-drag-source="true"]:active {
+  cursor: grabbing;
+}
+
 tbody tr:hover {
   background: #1e2630;
 }

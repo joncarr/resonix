@@ -220,6 +220,12 @@ function App() {
   const [browserError, setBrowserError] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [hasLoadedRestoreState, setHasLoadedRestoreState] = useState(false);
+  const pendingFileDrag = useRef<{
+    file: AudioFileMetadata;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const suppressNextFileClick = useRef(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return localStorage.getItem("resonix-theme") === "light" ? "light" : "dark";
   });
@@ -487,6 +493,47 @@ function App() {
       file,
       isFavorite,
     });
+  }
+
+  function prepareNativeFileDrag(
+    event: MouseEvent<HTMLTableRowElement>,
+    file: AudioFileMetadata,
+  ) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    pendingFileDrag.current = {
+      file,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  }
+
+  async function maybeStartNativeFileDrag(event: MouseEvent<HTMLTableRowElement>) {
+    const pendingDrag = pendingFileDrag.current;
+
+    if (!pendingDrag || (event.buttons & 1) === 0) {
+      return;
+    }
+
+    const deltaX = event.clientX - pendingDrag.startX;
+    const deltaY = event.clientY - pendingDrag.startY;
+
+    if (Math.hypot(deltaX, deltaY) < 6) {
+      return;
+    }
+
+    event.preventDefault();
+    suppressNextFileClick.current = true;
+    pendingFileDrag.current = null;
+
+    try {
+      await invoke("start_file_drag", { filePath: pendingDrag.file.path });
+      setError("");
+    } catch (dragError: unknown) {
+      setError(`Could not start file drag: ${String(dragError)}`);
+    }
   }
 
   async function rememberSelectedFile(filePath: string) {
@@ -1005,10 +1052,21 @@ function App() {
                 <tr
                   className={file.path === selectedPath ? "selected-row" : ""}
                   key={file.path}
+                  data-file-drag-source="true"
                   tabIndex={0}
                   aria-selected={file.path === selectedPath}
                   onContextMenu={(event) => openContextMenu(event, file)}
+                  onMouseDown={(event) => prepareNativeFileDrag(event, file)}
+                  onMouseMove={maybeStartNativeFileDrag}
+                  onMouseUp={() => {
+                    pendingFileDrag.current = null;
+                  }}
                   onClick={() => {
+                    if (suppressNextFileClick.current) {
+                      suppressNextFileClick.current = false;
+                      return;
+                    }
+
                     setSelectedPath(file.path);
                     rememberSelectedFile(file.path);
                     playFile(file, 0);
