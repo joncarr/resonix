@@ -71,6 +71,32 @@ button {
   text-transform: capitalize;
 }
 
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 24px;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #d8dee8;
+  background: transparent;
+}
+
+.theme-toggle:hover,
+.theme-toggle:focus-visible {
+  color: #7dd3fc;
+  border-color: #2d3540;
+  background: #1e2630;
+}
+
 .preview-panel {
   margin: 0;
   padding: 0;
@@ -114,6 +140,9 @@ button {
 }
 
 .waveform-canvas {
+  --waveform-background: #0e1217;
+  --waveform-foreground: #7f8da0;
+  --waveform-empty: #4b5563;
   display: block;
   width: 100%;
   height: 210px;
@@ -479,6 +508,136 @@ tbody tr.selected-row td:first-child {
 .context-menu button:focus-visible {
   color: #f8fafc;
   background: #1e2630;
+}
+
+.theme-light {
+  color: #223044;
+  background: #e6ebf2;
+}
+
+.theme-light .player-region,
+.theme-light .transport-bar,
+.theme-light .title-bar,
+.theme-light .preview-header,
+.theme-light .sidebar-header,
+.theme-light .browser-toolbar {
+  border-color: #c9d1dc;
+}
+
+.theme-light .player-region,
+.theme-light .transport-bar,
+.theme-light .title-bar,
+.theme-light .preview-header,
+.theme-light .sidebar-header,
+.theme-light .browser-toolbar,
+.theme-light .selection-panel {
+  background: #dfe5ee;
+}
+
+.theme-light .workspace,
+.theme-light .content,
+.theme-light .sidebar,
+.theme-light .table-wrap {
+  background: #edf1f6;
+}
+
+.theme-light .title-file,
+.theme-light .preview-title,
+.theme-light .selection-name,
+.theme-light td,
+.theme-light .transport-file,
+.theme-light .tree-row,
+.theme-light .theme-toggle,
+.theme-light .transport-icon-button {
+  color: #223044;
+}
+
+.theme-light .title-status,
+.theme-light .preview-status,
+.theme-light .selection-path,
+.theme-light .browser-summary,
+.theme-light .status,
+.theme-light .tree-status,
+.theme-light .audio-tree-row {
+  color: #637082;
+}
+
+.theme-light .app-mark,
+.theme-light .transport-label {
+  color: #1f6f9f;
+}
+
+.theme-light .selection-label,
+.theme-light .eyebrow {
+  color: #475569;
+}
+
+.theme-light .preview-panel,
+.theme-light .waveform-canvas {
+  --waveform-background: #f8fafc;
+  --waveform-foreground: #748398;
+  --waveform-empty: #94a3b8;
+  background: #f8fafc;
+}
+
+.theme-light input,
+.theme-light .browser-summary span {
+  color: #172033;
+  border-color: #c5ceda;
+  background: #f8fafc;
+}
+
+.theme-light th {
+  color: #475569;
+  background: #dfe5ee;
+}
+
+.theme-light th,
+.theme-light td {
+  border-color: #d5dce6;
+}
+
+.theme-light tbody tr:hover,
+.theme-light .tree-row:hover,
+.theme-light .tree-row:focus-visible,
+.theme-light .transport-icon-button:hover:not(:disabled),
+.theme-light .transport-icon-button:focus-visible,
+.theme-light .theme-toggle:hover,
+.theme-light .theme-toggle:focus-visible,
+.theme-light .context-menu button:hover,
+.theme-light .context-menu button:focus-visible {
+  background: #d7e0eb;
+}
+
+.theme-light tbody tr.selected-row,
+.theme-light .active-tree-row {
+  color: #1f2a12;
+  background: #cddf9a;
+}
+
+.theme-light tbody tr.selected-row td:first-child {
+  color: #1f2a12;
+}
+
+.theme-light .active-transport-icon {
+  color: #1f2a12;
+  border-color: #9db65d;
+  background: #d7e8a8;
+}
+
+.theme-light .context-menu {
+  border-color: #bac4d2;
+  background: #f8fafc;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+}
+
+.theme-light .context-menu button {
+  color: #223044;
+}
+
+.theme-light .status.error,
+.theme-light .tree-status.error {
+  color: #b42318;
 }
 
 @media (max-width: 760px) {

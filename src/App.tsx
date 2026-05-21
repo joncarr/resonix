@@ -17,6 +17,8 @@ import {
   Play,
   Repeat,
   Square,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -40,6 +42,7 @@ type FileBrowserEntry = {
 };
 
 type PlaybackStatus = "stopped" | "playing" | "paused";
+type Theme = "dark" | "light";
 
 type WaveformCanvasProps = {
   peaks: number[];
@@ -74,11 +77,19 @@ function WaveformCanvas({ peaks }: WaveformCanvasProps) {
     context.setTransform(scale, 0, 0, scale, 0, 0);
 
     context.clearRect(0, 0, rect.width, rect.height);
-    context.fillStyle = "#0e1217";
+    const styles = getComputedStyle(canvas);
+    const waveformBackground =
+      styles.getPropertyValue("--waveform-background").trim() || "#0e1217";
+    const waveformForeground =
+      styles.getPropertyValue("--waveform-foreground").trim() || "#7f8da0";
+    const waveformEmpty =
+      styles.getPropertyValue("--waveform-empty").trim() || "#4b5563";
+
+    context.fillStyle = waveformBackground;
     context.fillRect(0, 0, rect.width, rect.height);
 
     if (peaks.length === 0) {
-      context.fillStyle = "#4b5563";
+      context.fillStyle = waveformEmpty;
       context.fillText("No waveform loaded", 16, rect.height / 2);
       return;
     }
@@ -86,7 +97,7 @@ function WaveformCanvas({ peaks }: WaveformCanvasProps) {
     const centerY = rect.height / 2;
     const barWidth = Math.max(1, rect.width / peaks.length);
 
-    context.fillStyle = "#7f8da0";
+    context.fillStyle = waveformForeground;
     peaks.forEach((peak, index) => {
       const height = Math.max(1, peak * rect.height * 0.86);
       const x = index * barWidth;
@@ -115,6 +126,9 @@ function App() {
   const [error, setError] = useState("");
   const [browserError, setBrowserError] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [theme, setTheme] = useState<Theme>(() => {
+    return localStorage.getItem("resonix-theme") === "light" ? "light" : "dark";
+  });
 
   const filteredFiles = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -139,6 +153,10 @@ function App() {
   useEffect(() => {
     loadDirectory(null, ROOT_KEY);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("resonix-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     function closeContextMenu() {
@@ -527,7 +545,7 @@ function App() {
   }
 
   return (
-    <main className="app-shell" onKeyDown={handleAppKeyDown}>
+    <main className={`app-shell theme-${theme}`} onKeyDown={handleAppKeyDown}>
       <section className="player-region">
         <header className="title-bar">
           <div>
@@ -536,7 +554,22 @@ function App() {
               {selectedFile ? selectedFile.filename : "No file selected"}
             </span>
           </div>
-          <span className="title-status">{playbackStatus}</span>
+          <div className="title-actions">
+            <span className="title-status">{playbackStatus}</span>
+            <button
+              className="theme-toggle"
+              type="button"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              title={theme === "dark" ? "Light theme" : "Dark theme"}
+            >
+              {theme === "dark" ? (
+                <Sun aria-hidden="true" size={17} />
+              ) : (
+                <Moon aria-hidden="true" size={17} />
+              )}
+            </button>
+          </div>
         </header>
 
         <section className="preview-panel" aria-label="Waveform preview">
