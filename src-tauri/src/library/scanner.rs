@@ -88,10 +88,19 @@ pub fn read_audio_metadata(path: &Path) -> Result<AudioFileMetadata, String> {
 }
 
 pub fn normalize_path(path: &Path) -> String {
-    path.canonicalize()
+    let path = path
+        .canonicalize()
         .unwrap_or_else(|_| PathBuf::from(path))
         .to_string_lossy()
-        .to_string()
+        .to_string();
+
+    if let Some(path) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{path}")
+    } else if let Some(path) = path.strip_prefix(r"\\?\") {
+        path.to_string()
+    } else {
+        path
+    }
 }
 
 #[derive(Default)]

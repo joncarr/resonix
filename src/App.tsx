@@ -69,6 +69,44 @@ type AppRestoreState = {
 
 const ROOT_KEY = "__roots__";
 
+function buildDirectoryRestoreChain(path: string) {
+  const normalizedPath = path
+    .replace(/^\\\\\?\\UNC\\/i, "\\\\")
+    .replace(/^\\\\\?\\/i, "")
+    .replace(/\//g, "\\");
+
+  if (/^[A-Za-z]:\\/.test(normalizedPath)) {
+    const driveRoot = normalizedPath.slice(0, 3);
+    const parts = normalizedPath.slice(3).split("\\").filter(Boolean);
+    const chain = [driveRoot];
+    let currentPath = driveRoot;
+
+    for (const part of parts) {
+      currentPath = currentPath.endsWith("\\")
+        ? `${currentPath}${part}`
+        : `${currentPath}\\${part}`;
+      chain.push(currentPath);
+    }
+
+    return chain;
+  }
+
+  if (path.startsWith("/")) {
+    const parts = path.split("/").filter(Boolean);
+    const chain = ["/"];
+    let currentPath = "";
+
+    for (const part of parts) {
+      currentPath = `${currentPath}/${part}`;
+      chain.push(currentPath);
+    }
+
+    return chain;
+  }
+
+  return [path];
+}
+
 function WaveformCanvas({
   peaks,
   playheadProgress,
@@ -240,7 +278,7 @@ function App() {
 
   async function initializeLibraryState() {
     try {
-      await Promise.all([loadDirectory(null, ROOT_KEY), loadFavorites()]);
+      await Promise.all([loadTreeEntries(null, ROOT_KEY), loadFavorites()]);
     } catch (libraryLoadError: unknown) {
       setBrowserError(String(libraryLoadError));
     }
@@ -253,7 +291,17 @@ function App() {
       }
 
       if (restoreState.lastDirectory) {
-        setExpandedPaths((paths) => new Set(paths).add(restoreState.lastDirectory as string));
+        const restoreChain = buildDirectoryRestoreChain(restoreState.lastDirectory);
+        setExpandedPaths((paths) => {
+          const nextPaths = new Set(paths);
+          restoreChain.forEach((path) => nextPaths.add(path));
+          return nextPaths;
+        });
+
+        for (const directory of restoreChain.slice(0, -1)) {
+          await loadTreeEntries(directory);
+        }
+
         const audioFiles = await loadDirectory(restoreState.lastDirectory);
 
         if (
@@ -389,27 +437,35 @@ function App() {
     path: string | null,
     cacheKey = path ?? ROOT_KEY,
   ): Promise<AudioFileMetadata[]> {
+    const entries = await loadTreeEntries(path, cacheKey);
+
+    if (path) {
+      const audioFiles = entries
+        .filter((entry) => !entry.isDirectory && entry.audioFile)
+        .map((entry) => entry.audioFile as AudioFileMetadata);
+      setFiles(audioFiles);
+      setCurrentDirectory(path);
+      setSelectedPath(audioFiles[0]?.path ?? null);
+      setPlayheadSeconds(0);
+      setPlaybackAnchor(null);
+      setPlaybackStatus("stopped");
+      return audioFiles;
+    }
+
+    return [];
+  }
+
+  async function loadTreeEntries(
+    path: string | null,
+    cacheKey = path ?? ROOT_KEY,
+  ): Promise<FileBrowserEntry[]> {
     setLoadingPaths((paths) => new Set(paths).add(cacheKey));
     setBrowserError("");
 
     try {
       const entries = await invoke<FileBrowserEntry[]>("list_directory", { path });
       setTreeEntries((previous) => ({ ...previous, [cacheKey]: entries }));
-
-      if (path) {
-        const audioFiles = entries
-          .filter((entry) => !entry.isDirectory && entry.audioFile)
-          .map((entry) => entry.audioFile as AudioFileMetadata);
-        setFiles(audioFiles);
-        setCurrentDirectory(path);
-        setSelectedPath(audioFiles[0]?.path ?? null);
-        setPlayheadSeconds(0);
-        setPlaybackAnchor(null);
-        setPlaybackStatus("stopped");
-        return audioFiles;
-      }
-
-      return [];
+      return entries;
     } catch (directoryError: unknown) {
       setBrowserError(String(directoryError));
       return [];
@@ -854,13 +910,6 @@ function App() {
         </header>
 
         <section className="preview-panel" aria-label="Waveform preview">
-          <div className="preview-header">
-            <div>
-              <p className="preview-title">
-                {selectedFile ? selectedFile.filename : "No file selected"}
-              </p>
-            </div>
-          </div>
           <WaveformCanvas
             peaks={waveformPeaks}
             playheadProgress={
