@@ -25,16 +25,17 @@ pub async fn list_directory(path: Option<String>) -> Result<Vec<FileBrowserEntry
 
 #[tauri::command]
 pub fn play_file(file_path: String, playback: State<'_, PlaybackController>) -> Result<(), String> {
-    playback.play_file(file_path, false)
+    playback.play_file(file_path, false, 0.0)
 }
 
 #[tauri::command]
 pub fn play_file_with_loop(
     file_path: String,
     loop_enabled: bool,
+    start_seconds: Option<f64>,
     playback: State<'_, PlaybackController>,
 ) -> Result<(), String> {
-    playback.play_file(file_path, loop_enabled)
+    playback.play_file(file_path, loop_enabled, start_seconds.unwrap_or(0.0))
 }
 
 #[tauri::command]

@@ -143,12 +143,16 @@ button {
   --waveform-background: #0e1217;
   --waveform-foreground: #7f8da0;
   --waveform-empty: #4b5563;
+  --marker-label-background: rgba(13, 18, 24, 0.88);
+  --marker-label-border: rgba(125, 211, 252, 0.72);
+  --marker-label-text: #dff4ff;
   display: block;
   width: 100%;
   height: 210px;
   border: 0;
   border-radius: 0;
   background: #0e1217;
+  cursor: crosshair;
 }
 
 .waveform-error {
@@ -577,6 +581,9 @@ tbody tr.selected-row td:first-child {
   --waveform-background: #f8fafc;
   --waveform-foreground: #748398;
   --waveform-empty: #94a3b8;
+  --marker-label-background: rgba(248, 250, 252, 0.92);
+  --marker-label-border: rgba(31, 111, 159, 0.55);
+  --marker-label-text: #0f2d3f;
   background: #f8fafc;
 }
 

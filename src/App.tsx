@@ -5,6 +5,7 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -46,6 +47,9 @@ type Theme = "dark" | "light";
 
 type WaveformCanvasProps = {
   peaks: number[];
+  playheadProgress: number;
+  playheadSeconds: number;
+  onSeek: (progress: number) => void;
 };
 
 type ContextMenuState = {
@@ -56,10 +60,15 @@ type ContextMenuState = {
 
 const ROOT_KEY = "__roots__";
 
-function WaveformCanvas({ peaks }: WaveformCanvasProps) {
+function WaveformCanvas({
+  peaks,
+  playheadProgress,
+  playheadSeconds,
+  onSeek,
+}: WaveformCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  useEffect(() => {
+  function drawWaveform(nextPlayheadProgress: number) {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
@@ -84,6 +93,14 @@ function WaveformCanvas({ peaks }: WaveformCanvasProps) {
       styles.getPropertyValue("--waveform-foreground").trim() || "#7f8da0";
     const waveformEmpty =
       styles.getPropertyValue("--waveform-empty").trim() || "#4b5563";
+    const markerLabelBackground =
+      styles.getPropertyValue("--marker-label-background").trim() ||
+      "rgba(13, 18, 24, 0.88)";
+    const markerLabelBorder =
+      styles.getPropertyValue("--marker-label-border").trim() ||
+      "rgba(125, 211, 252, 0.72)";
+    const markerLabelText =
+      styles.getPropertyValue("--marker-label-text").trim() || "#dff4ff";
 
     context.fillStyle = waveformBackground;
     context.fillRect(0, 0, rect.width, rect.height);
@@ -104,9 +121,68 @@ function WaveformCanvas({ peaks }: WaveformCanvasProps) {
       const y = centerY - height / 2;
       context.fillRect(x, y, Math.max(1, barWidth - 1), height);
     });
-  }, [peaks]);
 
-  return <canvas className="waveform-canvas" ref={canvasRef} />;
+    const markerX = Math.min(Math.max(nextPlayheadProgress, 0), 1) * rect.width;
+    context.strokeStyle = "#7dd3fc";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(markerX, 0);
+    context.lineTo(markerX, rect.height);
+    context.stroke();
+
+    const label = formatTimecode(playheadSeconds);
+    context.font =
+      '12px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const metrics = context.measureText(label);
+    const labelWidth = metrics.width + 12;
+    const labelHeight = 22;
+    const labelX = Math.min(Math.max(markerX + 6, 6), rect.width - labelWidth - 6);
+    const labelY = 8;
+
+    context.fillStyle = markerLabelBackground;
+    context.fillRect(labelX, labelY, labelWidth, labelHeight);
+    context.strokeStyle = markerLabelBorder;
+    context.strokeRect(labelX, labelY, labelWidth, labelHeight);
+    context.fillStyle = markerLabelText;
+    context.fillText(label, labelX + 6, labelY + 15);
+  }
+
+  useEffect(() => {
+    drawWaveform(playheadProgress);
+  }, [peaks, playheadProgress, playheadSeconds]);
+
+  function handlePointerDown(event: PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const progress = (event.clientX - rect.left) / rect.width;
+    const nextProgress = Math.min(Math.max(progress, 0), 1);
+
+    drawWaveform(nextProgress);
+    onSeek(nextProgress);
+  }
+
+  return (
+    <canvas
+      className="waveform-canvas"
+      onPointerDown={handlePointerDown}
+      ref={canvasRef}
+    />
+  );
+}
+
+function formatTimecode(seconds: number) {
+  const safeSeconds = Math.max(0, seconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const wholeSeconds = Math.floor(safeSeconds % 60)
+    .toString()
+    .padStart(2, "0");
+  const tenths = Math.floor((safeSeconds % 1) * 10);
+
+  return `${minutes}:${wholeSeconds}.${tenths}`;
 }
 
 function App() {
@@ -120,6 +196,11 @@ function App() {
   const [playbackStatus, setPlaybackStatus] =
     useState<PlaybackStatus>("stopped");
   const [isLooping, setIsLooping] = useState(false);
+  const [playheadSeconds, setPlayheadSeconds] = useState(0);
+  const [playbackAnchor, setPlaybackAnchor] = useState<{
+    offsetSeconds: number;
+    startedAt: number;
+  } | null>(null);
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [isLoadingWaveform, setIsLoadingWaveform] = useState(false);
   const [waveformError, setWaveformError] = useState("");
@@ -223,6 +304,36 @@ function App() {
     };
   }, [selectedFile]);
 
+  useEffect(() => {
+    if (playbackStatus !== "playing" || !playbackAnchor) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      const elapsedSeconds =
+        playbackAnchor.offsetSeconds + (Date.now() - playbackAnchor.startedAt) / 1000;
+      const duration = selectedFile?.durationSeconds;
+
+      if (duration && duration > 0) {
+        if (isLooping) {
+          setPlayheadSeconds(elapsedSeconds % duration);
+        } else {
+          const nextTime = Math.min(elapsedSeconds, duration);
+          setPlayheadSeconds(nextTime);
+
+          if (nextTime >= duration) {
+            setPlaybackStatus("stopped");
+            setPlaybackAnchor(null);
+          }
+        }
+      } else {
+        setPlayheadSeconds(elapsedSeconds);
+      }
+    }, 50);
+
+    return () => window.clearInterval(interval);
+  }, [isLooping, playbackAnchor, playbackStatus, selectedFile]);
+
   async function loadDirectory(path: string | null, cacheKey = path ?? ROOT_KEY) {
     setLoadingPaths((paths) => new Set(paths).add(cacheKey));
     setBrowserError("");
@@ -238,6 +349,8 @@ function App() {
         setFiles(audioFiles);
         setCurrentDirectory(path);
         setSelectedPath(audioFiles[0]?.path ?? null);
+        setPlayheadSeconds(0);
+        setPlaybackAnchor(null);
         setSearchQuery("");
         setPlaybackStatus("stopped");
       }
@@ -282,7 +395,7 @@ function App() {
       return [file, ...currentFiles];
     });
     setSelectedPath(file.path);
-    await playFile(file);
+    await playFile(file, 0);
   }
 
   function openContextMenu(
@@ -350,16 +463,26 @@ function App() {
       return;
     }
 
-    await playFile(selectedFile);
+    await playFile(selectedFile, playheadSeconds);
   }
 
-  async function playFile(file: AudioFileMetadata) {
+  async function playFile(file: AudioFileMetadata, startSeconds = 0) {
+    const normalizedStartSeconds = Math.max(0, startSeconds);
+
+    setPlaybackAnchor(null);
+    setPlayheadSeconds(normalizedStartSeconds);
+    setPlaybackStatus("playing");
+
     try {
       await invoke("play_file_with_loop", {
         filePath: file.path,
         loopEnabled: isLooping,
+        startSeconds: normalizedStartSeconds,
       });
-      setPlaybackStatus("playing");
+      setPlaybackAnchor({
+        offsetSeconds: normalizedStartSeconds,
+        startedAt: Date.now(),
+      });
       setError("");
     } catch (playbackError: unknown) {
       setPlaybackStatus("stopped");
@@ -411,12 +534,23 @@ function App() {
     try {
       if (playbackStatus === "playing") {
         await invoke("pause_playback");
+        if (playbackAnchor) {
+          setPlayheadSeconds(
+            playbackAnchor.offsetSeconds +
+              (Date.now() - playbackAnchor.startedAt) / 1000,
+          );
+        }
+        setPlaybackAnchor(null);
         setPlaybackStatus("paused");
         return;
       }
 
       if (playbackStatus === "paused") {
         await invoke("resume_playback");
+        setPlaybackAnchor({
+          offsetSeconds: playheadSeconds,
+          startedAt: Date.now(),
+        });
         setPlaybackStatus("playing");
       }
     } catch (playbackError: unknown) {
@@ -428,6 +562,8 @@ function App() {
     try {
       await invoke("stop_playback");
       setPlaybackStatus("stopped");
+      setPlaybackAnchor(null);
+      setPlayheadSeconds(0);
     } catch (playbackError: unknown) {
       setError(`Could not stop playback: ${String(playbackError)}`);
     }
@@ -437,19 +573,34 @@ function App() {
     const nextLoopState = !isLooping;
     setIsLooping(nextLoopState);
 
-    if (selectedFile && playbackStatus !== "stopped") {
+    if (selectedFile && playbackStatus === "playing") {
       try {
         await invoke("play_file_with_loop", {
           filePath: selectedFile.path,
           loopEnabled: nextLoopState,
+          startSeconds: playheadSeconds,
         });
         setPlaybackStatus("playing");
+        setPlaybackAnchor({
+          offsetSeconds: playheadSeconds,
+          startedAt: Date.now(),
+        });
         setError("");
       } catch (playbackError: unknown) {
         setPlaybackStatus("stopped");
         setError(`Could not update loop playback: ${String(playbackError)}`);
       }
     }
+  }
+
+  async function seekToProgress(progress: number) {
+    if (!selectedFile?.durationSeconds) {
+      return;
+    }
+
+    const nextTime = selectedFile.durationSeconds * progress;
+    setPlayheadSeconds(nextTime);
+    await playFile(selectedFile, nextTime);
   }
 
   function handleBrowserKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -588,7 +739,16 @@ function App() {
                   : `${waveformPeaks.length.toLocaleString()} peaks`}
             </p>
           </div>
-          <WaveformCanvas peaks={waveformPeaks} />
+          <WaveformCanvas
+            peaks={waveformPeaks}
+            playheadProgress={
+              selectedFile?.durationSeconds
+                ? playheadSeconds / selectedFile.durationSeconds
+                : 0
+            }
+            playheadSeconds={playheadSeconds}
+            onSeek={seekToProgress}
+          />
           {waveformError ? (
             <p className="status error waveform-error">{waveformError}</p>
           ) : null}
@@ -729,7 +889,7 @@ function App() {
                   onContextMenu={(event) => openContextMenu(event, file)}
                   onClick={() => {
                     setSelectedPath(file.path);
-                    playFile(file);
+                    playFile(file, 0);
                   }}
                   onFocus={() => setSelectedPath(file.path)}
                 >

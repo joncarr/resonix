@@ -3,6 +3,7 @@ use std::{
     io::BufReader,
     sync::mpsc::{self, Sender},
     thread,
+    time::Duration,
 };
 
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
@@ -15,6 +16,7 @@ enum PlaybackCommand {
     Play {
         file_path: String,
         loop_enabled: bool,
+        start_seconds: f64,
         reply: Sender<Result<(), String>>,
     },
     Pause {
@@ -40,9 +42,11 @@ impl PlaybackController {
                     PlaybackCommand::Play {
                         file_path,
                         loop_enabled,
+                        start_seconds,
                         reply,
                     } => {
-                        let _ = reply.send(playback.play_file(&file_path, loop_enabled));
+                        let _ =
+                            reply.send(playback.play_file(&file_path, loop_enabled, start_seconds));
                     }
                     PlaybackCommand::Pause { reply } => {
                         playback.pause();
@@ -63,10 +67,16 @@ impl PlaybackController {
         Self { sender }
     }
 
-    pub fn play_file(&self, file_path: String, loop_enabled: bool) -> Result<(), String> {
+    pub fn play_file(
+        &self,
+        file_path: String,
+        loop_enabled: bool,
+        start_seconds: f64,
+    ) -> Result<(), String> {
         self.send_command(|reply| PlaybackCommand::Play {
             file_path,
             loop_enabled,
+            start_seconds,
             reply,
         })
     }
@@ -110,7 +120,12 @@ impl PlaybackManager {
         }
     }
 
-    pub fn play_file(&mut self, file_path: &str, loop_enabled: bool) -> Result<(), String> {
+    pub fn play_file(
+        &mut self,
+        file_path: &str,
+        loop_enabled: bool,
+        start_seconds: f64,
+    ) -> Result<(), String> {
         self.stop();
         self.ensure_output_stream()?;
 
@@ -121,11 +136,21 @@ impl PlaybackManager {
             .as_ref()
             .ok_or_else(|| "Playback output is unavailable.".to_string())?;
         let sink = Sink::try_new(handle).map_err(|error| error.to_string())?;
+        let start = Duration::from_secs_f64(start_seconds.max(0.0));
 
         if loop_enabled {
-            sink.append(source.repeat_infinite());
+            if start.is_zero() {
+                sink.append(source.repeat_infinite());
+            } else {
+                let loop_file = File::open(file_path).map_err(|error| error.to_string())?;
+                let loop_source =
+                    Decoder::new(BufReader::new(loop_file)).map_err(|error| error.to_string())?;
+
+                sink.append(source.skip_duration(start));
+                sink.append(loop_source.repeat_infinite());
+            }
         } else {
-            sink.append(source);
+            sink.append(source.skip_duration(start));
         }
 
         self.sink = Some(sink);
