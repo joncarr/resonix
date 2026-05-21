@@ -11,7 +11,6 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   ChevronDown,
   ChevronRight,
-  FileAudio,
   Folder,
   HardDrive,
   Pause,
@@ -401,12 +400,26 @@ function App() {
     }
   }
 
-  async function loadFavorites() {
+  async function loadFavorites(): Promise<AudioFileMetadata[]> {
     try {
-      setFavoriteFiles(await invoke<AudioFileMetadata[]>("list_favorites"));
+      const favorites = await invoke<AudioFileMetadata[]>("list_favorites");
+      setFavoriteFiles(favorites);
+      return favorites;
     } catch (favoritesError: unknown) {
       setBrowserError(String(favoritesError));
+      return [];
     }
+  }
+
+  async function showFavorites() {
+    const favorites = await loadFavorites();
+    setFiles(favorites);
+    setCurrentDirectory("Favorites");
+    setSelectedPath(favorites[0]?.path ?? null);
+    setPlayheadSeconds(0);
+    setPlaybackAnchor(null);
+    setSearchQuery("");
+    setPlaybackStatus("stopped");
   }
 
   async function toggleDirectory(path: string) {
@@ -749,27 +762,7 @@ function App() {
         );
       }
 
-      if (!entry.audioFile) {
-        return null;
-      }
-
-      return (
-        <button
-          className={`tree-row audio-tree-row ${
-            selectedPath === entry.path ? "active-tree-row" : ""
-          }`}
-          key={entry.path}
-          style={{ paddingLeft: `${30 + depth * 14}px` }}
-          type="button"
-          onClick={() => selectAudioFile(entry.audioFile as AudioFileMetadata)}
-          onContextMenu={(event) =>
-            openContextMenu(event, entry.audioFile as AudioFileMetadata)
-          }
-        >
-          <FileAudio size={15} />
-          <span>{entry.name}</span>
-        </button>
-      );
+      return null;
     });
   }
 
@@ -895,24 +888,15 @@ function App() {
                 <Star size={13} />
                 Favorites
               </p>
-              {favoriteFiles.length === 0 ? (
-                <p className="tree-status">No favorites yet.</p>
-              ) : (
-                favoriteFiles.map((file) => (
-                  <button
-                    className={`tree-row audio-tree-row ${
-                      selectedPath === file.path ? "active-tree-row" : ""
-                    }`}
-                    key={file.path}
-                    type="button"
-                    onClick={() => selectAudioFile(file)}
-                    onContextMenu={(event) => openContextMenu(event, file)}
-                  >
-                    <FileAudio size={15} />
-                    <span>{file.filename}</span>
-                  </button>
-                ))
-              )}
+              <button
+                className={`tree-row ${currentDirectory === "Favorites" ? "active-tree-row" : ""}`}
+                type="button"
+                onClick={showFavorites}
+              >
+                <Folder size={15} />
+                <span>Favorites</span>
+                <span className="tree-loading">{favoriteFiles.length}</span>
+              </button>
             </section>
 
             <section className="sidebar-section" aria-label="Drives">
@@ -942,7 +926,10 @@ function App() {
             />
           </div>
           <div className="browser-summary">
-            <span>{files.length.toLocaleString()} in folder</span>
+            <span>
+              {files.length.toLocaleString()}{" "}
+              {currentDirectory === "Favorites" ? "favorites" : "in folder"}
+            </span>
             <span>{filteredFiles.length.toLocaleString()} shown</span>
           </div>
         </section>
