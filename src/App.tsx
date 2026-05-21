@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -17,6 +18,8 @@ import {
   Repeat,
   Square,
 } from "lucide-react";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import "./App.css";
 
 type AudioFileMetadata = {
@@ -41,6 +44,12 @@ type PlaybackStatus = "stopped" | "playing" | "paused";
 type WaveformCanvasProps = {
   peaks: number[];
 };
+
+type ContextMenuState = {
+  x: number;
+  y: number;
+  file: AudioFileMetadata;
+} | null;
 
 const ROOT_KEY = "__roots__";
 
@@ -105,6 +114,7 @@ function App() {
   const [waveformError, setWaveformError] = useState("");
   const [error, setError] = useState("");
   const [browserError, setBrowserError] = useState("");
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
 
   const filteredFiles = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -128,6 +138,20 @@ function App() {
 
   useEffect(() => {
     loadDirectory(null, ROOT_KEY);
+  }, []);
+
+  useEffect(() => {
+    function closeContextMenu() {
+      setContextMenu(null);
+    }
+
+    window.addEventListener("click", closeContextMenu);
+    window.addEventListener("keydown", closeContextMenu);
+
+    return () => {
+      window.removeEventListener("click", closeContextMenu);
+      window.removeEventListener("keydown", closeContextMenu);
+    };
   }, []);
 
   useEffect(() => {
@@ -243,6 +267,20 @@ function App() {
     await playFile(file);
   }
 
+  function openContextMenu(
+    event: MouseEvent<HTMLElement>,
+    file: AudioFileMetadata,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedPath(file.path);
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      file,
+    });
+  }
+
   function formatBytes(bytes: number) {
     if (bytes < 1024) {
       return `${bytes} B`;
@@ -309,6 +347,46 @@ function App() {
       setPlaybackStatus("stopped");
       setError(`Could not play file: ${String(playbackError)}`);
     }
+  }
+
+  async function revealFile(file: AudioFileMetadata) {
+    try {
+      await revealItemInDir(file.path);
+      setError("");
+    } catch (revealError: unknown) {
+      setError(`Could not reveal file: ${String(revealError)}`);
+    }
+  }
+
+  async function copyFilePath(file: AudioFileMetadata) {
+    try {
+      await writeText(file.path);
+      setError("");
+    } catch (copyError: unknown) {
+      setError(`Could not copy path: ${String(copyError)}`);
+    }
+  }
+
+  async function runContextMenuAction(action: "play" | "reveal" | "copy") {
+    if (!contextMenu) {
+      return;
+    }
+
+    const file = contextMenu.file;
+    setContextMenu(null);
+
+    if (action === "play") {
+      setSelectedPath(file.path);
+      await playFile(file);
+      return;
+    }
+
+    if (action === "reveal") {
+      await revealFile(file);
+      return;
+    }
+
+    await copyFilePath(file);
   }
 
   async function togglePause() {
@@ -437,6 +515,9 @@ function App() {
           style={{ paddingLeft: `${30 + depth * 14}px` }}
           type="button"
           onClick={() => selectAudioFile(entry.audioFile as AudioFileMetadata)}
+          onContextMenu={(event) =>
+            openContextMenu(event, entry.audioFile as AudioFileMetadata)
+          }
         >
           <FileAudio size={15} />
           <span>{entry.name}</span>
@@ -612,6 +693,7 @@ function App() {
                   key={file.path}
                   tabIndex={0}
                   aria-selected={file.path === selectedPath}
+                  onContextMenu={(event) => openContextMenu(event, file)}
                   onClick={() => {
                     setSelectedPath(file.path);
                     playFile(file);
@@ -635,6 +717,36 @@ function App() {
         </div>
       </section>
       </section>
+      {contextMenu ? (
+        <div
+          className="context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          role="menu"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runContextMenuAction("play")}
+          >
+            Play
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runContextMenuAction("reveal")}
+          >
+            Reveal in Explorer
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runContextMenuAction("copy")}
+          >
+            Copy Path
+          </button>
+        </div>
+      ) : null}
     </main>
   );
 }
