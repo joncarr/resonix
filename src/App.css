@@ -236,6 +236,52 @@ button {
   opacity: 1;
 }
 
+.volume-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  padding-left: 10px;
+  border-left: 1px solid #2d3540;
+}
+
+.volume-slider {
+  width: 118px;
+  min-width: 118px;
+  height: 4px;
+  padding: 0;
+  border: 0;
+  accent-color: #7dd3fc;
+  background: transparent;
+}
+
+.dim-button {
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #d8dee8;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.dim-button:hover,
+.dim-button:focus-visible {
+  color: #7dd3fc;
+  border-color: #2d3540;
+  background: #1e2630;
+}
+
+.active-dim-button {
+  color: #dff4ff;
+  border-color: #2d6f94;
+  background: #173447;
+}
+
 .workspace {
   flex: 1;
   min-height: 0;
@@ -577,10 +623,11 @@ tbody tr.selected-row td:first-child {
 .theme-light .preview-title,
 .theme-light .selection-name,
 .theme-light td,
-.theme-light .transport-file,
-.theme-light .tree-row,
-.theme-light .theme-toggle,
-.theme-light .transport-icon-button {
+  .theme-light .transport-file,
+  .theme-light .tree-row,
+  .theme-light .theme-toggle,
+  .theme-light .transport-icon-button,
+  .theme-light .dim-button {
   color: #223044;
 }
 
@@ -660,6 +707,16 @@ tbody tr.selected-row td:first-child {
   background: #c9e9f7;
 }
 
+.theme-light .volume-controls {
+  border-color: #c5ceda;
+}
+
+.theme-light .active-dim-button {
+  color: #0f2d3f;
+  border-color: #75b6d6;
+  background: #c9e9f7;
+}
+
 .theme-light .context-menu {
   border-color: #bac4d2;
   background: #f8fafc;
@@ -706,8 +763,15 @@ tbody tr.selected-row td:first-child {
   }
 
   .browser-summary,
-  .transport-controls {
+  .transport-controls,
+  .volume-controls {
     flex-wrap: wrap;
+  }
+
+  .volume-controls {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: 0;
   }
 
   .selection-path {

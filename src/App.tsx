@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
@@ -20,6 +19,9 @@ import {
   Moon,
   Star,
   Sun,
+  Volume1,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -62,6 +64,7 @@ type ContextMenuState = {
 type AppRestoreState = {
   lastDirectory: string | null;
   lastFile: string | null;
+  theme: string | null;
 };
 
 const ROOT_KEY = "__roots__";
@@ -198,11 +201,13 @@ function App() {
   const [currentDirectory, setCurrentDirectory] = useState<string | null>(null);
   const [files, setFiles] = useState<AudioFileMetadata[]>([]);
   const [favoriteFiles, setFavoriteFiles] = useState<AudioFileMetadata[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [playbackStatus, setPlaybackStatus] =
     useState<PlaybackStatus>("stopped");
   const [isLooping, setIsLooping] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isDimmed, setIsDimmed] = useState(false);
   const [playheadSeconds, setPlayheadSeconds] = useState(0);
   const [playbackAnchor, setPlaybackAnchor] = useState<{
     offsetSeconds: number;
@@ -214,27 +219,12 @@ function App() {
   const [error, setError] = useState("");
   const [browserError, setBrowserError] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [hasLoadedRestoreState, setHasLoadedRestoreState] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return localStorage.getItem("resonix-theme") === "light" ? "light" : "dark";
   });
 
-  const filteredFiles = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
-    if (!normalizedQuery) {
-      return files;
-    }
-
-    return files.filter((file) => {
-      return [file.filename, file.path, file.extension]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
-  }, [files, searchQuery]);
-
   const selectedFile =
-    filteredFiles.find((file) => file.path === selectedPath) ??
     files.find((file) => file.path === selectedPath) ??
     null;
 
@@ -243,10 +233,19 @@ function App() {
   }, []);
 
   async function initializeLibraryState() {
-    await Promise.all([loadDirectory(null, ROOT_KEY), loadFavorites()]);
+    try {
+      await Promise.all([loadDirectory(null, ROOT_KEY), loadFavorites()]);
+    } catch (libraryLoadError: unknown) {
+      setBrowserError(String(libraryLoadError));
+    }
 
     try {
       const restoreState = await invoke<AppRestoreState>("restore_app_state");
+
+      if (restoreState.theme === "dark" || restoreState.theme === "light") {
+        setTheme(restoreState.theme);
+      }
+
       if (restoreState.lastDirectory) {
         setExpandedPaths((paths) => new Set(paths).add(restoreState.lastDirectory as string));
         const audioFiles = await loadDirectory(restoreState.lastDirectory);
@@ -261,11 +260,29 @@ function App() {
     } catch (restoreError: unknown) {
       setBrowserError(String(restoreError));
     }
+
+    setHasLoadedRestoreState(true);
   }
 
   useEffect(() => {
+    if (!hasLoadedRestoreState) {
+      return;
+    }
+
     localStorage.setItem("resonix-theme", theme);
-  }, [theme]);
+    invoke("remember_theme", { theme }).catch((themeError: unknown) => {
+      setError(`Could not remember theme: ${String(themeError)}`);
+    });
+  }, [hasLoadedRestoreState, theme]);
+
+  useEffect(() => {
+    const effectiveVolume = isMuted ? 0 : volume * (isDimmed ? 0.3 : 1);
+    invoke("set_playback_volume", { volume: effectiveVolume }).catch(
+      (volumeError: unknown) => {
+        setError(`Could not update volume: ${String(volumeError)}`);
+      },
+    );
+  }, [isDimmed, isMuted, volume]);
 
   useEffect(() => {
     function closeContextMenu() {
@@ -282,14 +299,14 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (filteredFiles.length === 0) {
+    if (files.length === 0) {
       return;
     }
 
-    if (!filteredFiles.some((file) => file.path === selectedPath)) {
-      setSelectedPath(filteredFiles[0].path);
+    if (!files.some((file) => file.path === selectedPath)) {
+      setSelectedPath(files[0].path);
     }
-  }, [filteredFiles, selectedPath]);
+  }, [files, selectedPath]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -382,7 +399,6 @@ function App() {
         setSelectedPath(audioFiles[0]?.path ?? null);
         setPlayheadSeconds(0);
         setPlaybackAnchor(null);
-        setSearchQuery("");
         setPlaybackStatus("stopped");
         return audioFiles;
       }
@@ -418,7 +434,6 @@ function App() {
     setSelectedPath(favorites[0]?.path ?? null);
     setPlayheadSeconds(0);
     setPlaybackAnchor(null);
-    setSearchQuery("");
     setPlaybackStatus("stopped");
   }
 
@@ -513,19 +528,19 @@ function App() {
   }
 
   function selectRelativeFile(offset: number) {
-    if (filteredFiles.length === 0) {
+    if (files.length === 0) {
       return;
     }
 
-    const selectedIndex = filteredFiles.findIndex(
+    const selectedIndex = files.findIndex(
       (file) => file.path === selectedPath,
     );
     const nextIndex =
       selectedIndex === -1
         ? 0
-        : Math.min(Math.max(selectedIndex + offset, 0), filteredFiles.length - 1);
+        : Math.min(Math.max(selectedIndex + offset, 0), files.length - 1);
 
-    setSelectedPath(filteredFiles[nextIndex].path);
+    setSelectedPath(files[nextIndex].path);
   }
 
   async function playSelectedFile() {
@@ -772,9 +787,6 @@ function App() {
         <header className="title-bar">
           <div>
             <span className="app-mark">Resonix</span>
-            <span className="title-file">
-              {selectedFile ? selectedFile.filename : "No file selected"}
-            </span>
           </div>
           <div className="title-actions">
             <span className="title-status">{playbackStatus}</span>
@@ -797,18 +809,10 @@ function App() {
         <section className="preview-panel" aria-label="Waveform preview">
           <div className="preview-header">
             <div>
-              <p className="selection-label">Waveform</p>
               <p className="preview-title">
                 {selectedFile ? selectedFile.filename : "No file selected"}
               </p>
             </div>
-            <p className="preview-status">
-              {isLoadingWaveform
-                ? "Loading peaks"
-                : waveformError
-                  ? "Waveform unavailable"
-                  : `${waveformPeaks.length.toLocaleString()} peaks`}
-            </p>
           </div>
           <WaveformCanvas
             peaks={waveformPeaks}
@@ -827,7 +831,6 @@ function App() {
 
         <section className="transport-bar" aria-label="Transport controls">
           <div className="transport-file">
-            <span className="transport-label">Transport</span>
             <span>{selectedFile?.filename ?? "No file selected"}</span>
           </div>
           <div className="transport-controls">
@@ -873,6 +876,46 @@ function App() {
             >
               <Repeat aria-hidden="true" size={20} />
             </button>
+            <div className="volume-controls" aria-label="Volume controls">
+              <button
+                className={`transport-icon-button ${isMuted ? "active-transport-icon" : ""}`}
+                type="button"
+                onClick={() => setIsMuted((muted) => !muted)}
+                aria-pressed={isMuted}
+                aria-label={isMuted ? "Unmute playback" : "Mute playback"}
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX aria-hidden="true" size={20} />
+                ) : volume < 0.5 ? (
+                  <Volume1 aria-hidden="true" size={20} />
+                ) : (
+                  <Volume2 aria-hidden="true" size={20} />
+                )}
+              </button>
+              <input
+                className="volume-slider"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={volume}
+                onChange={(event) => {
+                  setVolume(Number(event.currentTarget.value));
+                  setIsMuted(false);
+                }}
+                aria-label="Playback volume"
+              />
+              <button
+                className={`dim-button ${isDimmed ? "active-dim-button" : ""}`}
+                type="button"
+                onClick={() => setIsDimmed((dimmed) => !dimmed)}
+                aria-pressed={isDimmed}
+                title={isDimmed ? "Turn dim off" : "Dim volume by 70%"}
+              >
+                Dim
+              </button>
+            </div>
           </div>
         </section>
       </section>
@@ -915,22 +958,11 @@ function App() {
 
         <section className="content">
         <section className="browser-toolbar" aria-label="File browser controls">
-          <div className="search-field">
-            <label htmlFor="file-search">Search current folder</label>
-            <input
-              id="file-search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
-              placeholder="Name, path, or extension"
-              disabled={files.length === 0}
-            />
-          </div>
           <div className="browser-summary">
             <span>
               {files.length.toLocaleString()}{" "}
               {currentDirectory === "Favorites" ? "favorites" : "in folder"}
             </span>
-            <span>{filteredFiles.length.toLocaleString()} shown</span>
           </div>
         </section>
 
@@ -951,13 +983,6 @@ function App() {
         {!error && currentDirectory && files.length === 0 ? (
           <p className="status">No supported audio files in this folder.</p>
         ) : null}
-        {!error && files.length > 0 && filteredFiles.length === 0 ? (
-          <p className="status">
-            No files match "{searchQuery.trim()}". Clear the search to show all files in
-            this folder.
-          </p>
-        ) : null}
-
         <div
           className="table-wrap"
           onKeyDown={handleBrowserKeyDown}
@@ -976,7 +1001,7 @@ function App() {
               </tr>
             </thead>
             <tbody>
-              {filteredFiles.map((file) => (
+              {files.map((file) => (
                 <tr
                   className={file.path === selectedPath ? "selected-row" : ""}
                   key={file.path}

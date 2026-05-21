@@ -28,11 +28,13 @@ pub fn run() {
             commands::list_recent_folders,
             commands::restore_app_state,
             commands::remember_selected_file,
+            commands::remember_theme,
             commands::play_file,
             commands::play_file_with_loop,
             commands::pause_playback,
             commands::resume_playback,
             commands::stop_playback,
+            commands::set_playback_volume,
             commands::generate_waveform
         ])
         .run(tauri::generate_context!())

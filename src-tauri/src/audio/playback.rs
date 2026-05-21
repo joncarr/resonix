@@ -28,6 +28,10 @@ enum PlaybackCommand {
     Stop {
         reply: Sender<Result<(), String>>,
     },
+    SetVolume {
+        volume: f32,
+        reply: Sender<Result<(), String>>,
+    },
 }
 
 impl PlaybackController {
@@ -58,6 +62,10 @@ impl PlaybackController {
                     }
                     PlaybackCommand::Stop { reply } => {
                         playback.stop();
+                        let _ = reply.send(Ok(()));
+                    }
+                    PlaybackCommand::SetVolume { volume, reply } => {
+                        playback.set_volume(volume);
                         let _ = reply.send(Ok(()));
                     }
                 }
@@ -93,6 +101,10 @@ impl PlaybackController {
         self.send_command(|reply| PlaybackCommand::Stop { reply })
     }
 
+    pub fn set_volume(&self, volume: f32) -> Result<(), String> {
+        self.send_command(|reply| PlaybackCommand::SetVolume { volume, reply })
+    }
+
     fn send_command(
         &self,
         build_command: impl FnOnce(Sender<Result<(), String>>) -> PlaybackCommand,
@@ -109,6 +121,7 @@ struct PlaybackManager {
     stream: Option<OutputStream>,
     handle: Option<OutputStreamHandle>,
     sink: Option<Sink>,
+    volume: f32,
 }
 
 impl PlaybackManager {
@@ -117,6 +130,7 @@ impl PlaybackManager {
             stream: None,
             handle: None,
             sink: None,
+            volume: 1.0,
         }
     }
 
@@ -136,6 +150,7 @@ impl PlaybackManager {
             .as_ref()
             .ok_or_else(|| "Playback output is unavailable.".to_string())?;
         let sink = Sink::try_new(handle).map_err(|error| error.to_string())?;
+        sink.set_volume(self.volume);
         let start = Duration::from_secs_f64(start_seconds.max(0.0));
 
         if loop_enabled {
@@ -173,6 +188,14 @@ impl PlaybackManager {
     pub fn stop(&mut self) {
         if let Some(sink) = self.sink.take() {
             sink.stop();
+        }
+    }
+
+    pub fn set_volume(&mut self, volume: f32) {
+        self.volume = volume.clamp(0.0, 1.0);
+
+        if let Some(sink) = &self.sink {
+            sink.set_volume(self.volume);
         }
     }
 

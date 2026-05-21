@@ -213,6 +213,7 @@ impl CacheDatabase {
         Ok(AppRestoreState {
             last_directory: self.app_state_value("last_directory")?,
             last_file: self.app_state_value("last_file")?,
+            theme: self.app_state_value("theme")?,
         })
     }
 

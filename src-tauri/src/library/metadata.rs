@@ -26,4 +26,5 @@ pub struct FileBrowserEntry {
 pub struct AppRestoreState {
     pub last_directory: Option<String>,
     pub last_file: Option<String>,
+    pub theme: Option<String>,
 }

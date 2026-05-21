@@ -134,6 +134,21 @@ pub async fn remember_selected_file(
 }
 
 #[tauri::command]
+pub async fn remember_theme(
+    theme: String,
+    database: State<'_, CacheDatabase>,
+) -> Result<(), String> {
+    if theme != "dark" && theme != "light" {
+        return Err("Theme must be either dark or light.".to_string());
+    }
+
+    let database = database.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || database.set_app_state("theme", Some(&theme)))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub fn play_file(file_path: String, playback: State<'_, PlaybackController>) -> Result<(), String> {
     playback.play_file(file_path, false, 0.0)
 }
@@ -161,6 +176,14 @@ pub fn resume_playback(playback: State<'_, PlaybackController>) -> Result<(), St
 #[tauri::command]
 pub fn stop_playback(playback: State<'_, PlaybackController>) -> Result<(), String> {
     playback.stop()
+}
+
+#[tauri::command]
+pub fn set_playback_volume(
+    volume: f32,
+    playback: State<'_, PlaybackController>,
+) -> Result<(), String> {
+    playback.set_volume(volume)
 }
 
 #[tauri::command]
