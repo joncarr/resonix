@@ -37,6 +37,7 @@ pub fn run() {
             commands::resume_playback,
             commands::stop_playback,
             commands::set_playback_volume,
+            commands::get_spectrum,
             commands::generate_waveform
         ])
         .run(tauri::generate_context!())

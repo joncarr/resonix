@@ -193,6 +193,14 @@ pub fn set_playback_volume(
 }
 
 #[tauri::command]
+pub fn get_spectrum(
+    bin_count: Option<usize>,
+    playback: State<'_, PlaybackController>,
+) -> Result<Vec<f32>, String> {
+    playback.spectrum_bins(bin_count.unwrap_or(96))
+}
+
+#[tauri::command]
 pub async fn generate_waveform(
     file_path: String,
     peak_count: Option<usize>,

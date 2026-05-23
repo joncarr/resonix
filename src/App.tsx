@@ -16,6 +16,7 @@ import {
   Play,
   Repeat,
   Square,
+  Activity,
   Moon,
   Star,
   Sun,
@@ -46,12 +47,18 @@ type FileBrowserEntry = {
 
 type PlaybackStatus = "stopped" | "playing" | "paused";
 type Theme = "dark" | "light";
+type VisualizerMode = "waveform" | "spectrum";
 
 type WaveformCanvasProps = {
   peaks: number[];
   playheadProgress: number;
   playheadSeconds: number;
   onSeek: (progress: number) => void;
+};
+
+type SpectrumCanvasProps = {
+  bins: number[];
+  isActive: boolean;
 };
 
 type ContextMenuState = {
@@ -221,6 +228,85 @@ function WaveformCanvas({
   );
 }
 
+function SpectrumCanvas({ bins, isActive }: SpectrumCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  function drawSpectrum() {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const scale = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(rect.width * scale));
+    canvas.height = Math.max(1, Math.floor(rect.height * scale));
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+
+    const styles = getComputedStyle(canvas);
+    const background =
+      styles.getPropertyValue("--spectrum-background").trim() || "#0e1217";
+    const barLow =
+      styles.getPropertyValue("--spectrum-bar-low").trim() || "#38bdf8";
+    const barHigh =
+      styles.getPropertyValue("--spectrum-bar-high").trim() || "#f59e0b";
+    const grid =
+      styles.getPropertyValue("--spectrum-grid").trim() ||
+      "rgba(127, 141, 160, 0.16)";
+    const empty =
+      styles.getPropertyValue("--spectrum-empty").trim() || "#4b5563";
+
+    context.fillStyle = background;
+    context.fillRect(0, 0, rect.width, rect.height);
+
+    context.strokeStyle = grid;
+    context.lineWidth = 1;
+    for (let line = 1; line < 4; line += 1) {
+      const y = (rect.height / 4) * line;
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(rect.width, y);
+      context.stroke();
+    }
+
+    if (!isActive || bins.length === 0) {
+      context.fillStyle = empty;
+      context.fillText(
+        isActive ? "Waiting for playback" : "Spectrum paused",
+        16,
+        rect.height / 2,
+      );
+      return;
+    }
+
+    const gap = 2;
+    const barWidth = Math.max(2, rect.width / bins.length - gap);
+    const gradient = context.createLinearGradient(0, rect.height, 0, 0);
+    gradient.addColorStop(0, barLow);
+    gradient.addColorStop(1, barHigh);
+    context.fillStyle = gradient;
+
+    bins.forEach((bin, index) => {
+      const magnitude = Math.min(Math.max(bin, 0), 1);
+      const height = Math.max(2, magnitude * rect.height * 0.9);
+      const x = index * (barWidth + gap);
+      const y = rect.height - height;
+      context.fillRect(x, y, barWidth, height);
+    });
+  }
+
+  useEffect(() => {
+    drawSpectrum();
+  }, [bins, isActive]);
+
+  return <canvas className="spectrum-canvas" ref={canvasRef} />;
+}
+
 function formatTimecode(seconds: number) {
   const safeSeconds = Math.max(0, seconds);
   const minutes = Math.floor(safeSeconds / 60);
@@ -254,6 +340,10 @@ function App() {
   const [waveformPeaks, setWaveformPeaks] = useState<number[]>([]);
   const [isLoadingWaveform, setIsLoadingWaveform] = useState(false);
   const [waveformError, setWaveformError] = useState("");
+  const [visualizerMode, setVisualizerMode] =
+    useState<VisualizerMode>("waveform");
+  const [spectrumBins, setSpectrumBins] = useState<number[]>([]);
+  const [spectrumError, setSpectrumError] = useState("");
   const [error, setError] = useState("");
   const [browserError, setBrowserError] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
@@ -432,6 +522,36 @@ function App() {
 
     return () => window.clearInterval(interval);
   }, [isLooping, playbackAnchor, playbackStatus, selectedFile]);
+
+  useEffect(() => {
+    if (visualizerMode !== "spectrum") {
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function refreshSpectrum() {
+      try {
+        const bins = await invoke<number[]>("get_spectrum", { binCount: 96 });
+        if (!isCancelled) {
+          setSpectrumBins(bins);
+          setSpectrumError("");
+        }
+      } catch (spectrumLoadError: unknown) {
+        if (!isCancelled) {
+          setSpectrumError(String(spectrumLoadError));
+        }
+      }
+    }
+
+    refreshSpectrum();
+    const interval = window.setInterval(refreshSpectrum, 50);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [visualizerMode]);
 
   async function loadDirectory(
     path: string | null,
@@ -909,19 +1029,34 @@ function App() {
           </div>
         </header>
 
-        <section className="preview-panel" aria-label="Waveform preview">
-          <WaveformCanvas
-            peaks={waveformPeaks}
-            playheadProgress={
-              selectedFile?.durationSeconds
-                ? playheadSeconds / selectedFile.durationSeconds
-                : 0
-            }
-            playheadSeconds={playheadSeconds}
-            onSeek={seekToProgress}
-          />
-          {waveformError ? (
-            <p className="status error waveform-error">{waveformError}</p>
+        <section
+          className="preview-panel"
+          aria-label={
+            visualizerMode === "waveform" ? "Waveform preview" : "Spectrum analyzer"
+          }
+        >
+          {visualizerMode === "waveform" ? (
+            <WaveformCanvas
+              peaks={waveformPeaks}
+              playheadProgress={
+                selectedFile?.durationSeconds
+                  ? playheadSeconds / selectedFile.durationSeconds
+                  : 0
+              }
+              playheadSeconds={playheadSeconds}
+              onSeek={seekToProgress}
+            />
+          ) : (
+            <SpectrumCanvas
+              bins={spectrumBins}
+              isActive={playbackStatus === "playing"}
+            />
+          )}
+          {waveformError && visualizerMode === "waveform" ? (
+            <p className="status error visualizer-error">{waveformError}</p>
+          ) : null}
+          {spectrumError && visualizerMode === "spectrum" ? (
+            <p className="status error visualizer-error">{spectrumError}</p>
           ) : null}
         </section>
 
@@ -971,6 +1106,30 @@ function App() {
               title={isLooping ? "Loop on" : "Loop off"}
             >
               <Repeat aria-hidden="true" size={20} />
+            </button>
+            <button
+              className={`transport-icon-button ${
+                visualizerMode === "spectrum" ? "active-transport-icon" : ""
+              }`}
+              type="button"
+              onClick={() =>
+                setVisualizerMode((mode) =>
+                  mode === "waveform" ? "spectrum" : "waveform",
+                )
+              }
+              aria-pressed={visualizerMode === "spectrum"}
+              aria-label={
+                visualizerMode === "spectrum"
+                  ? "Show waveform view"
+                  : "Show spectrum analyzer"
+              }
+              title={
+                visualizerMode === "spectrum"
+                  ? "Waveform view"
+                  : "Spectrum analyzer"
+              }
+            >
+              <Activity aria-hidden="true" size={20} />
             </button>
             <div className="volume-controls" aria-label="Volume controls">
               <button
