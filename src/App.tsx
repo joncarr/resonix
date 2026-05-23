@@ -1114,7 +1114,7 @@ function App() {
       <section className="player-region">
         <header className="title-bar">
           <div>
-            <span className="app-mark">Resonix</span>
+            <span className="app-mark">RSNX</span>
           </div>
           <div className="title-actions">
             <span className="title-status">{playbackStatus}</span>

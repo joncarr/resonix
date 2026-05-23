@@ -1,19 +1,22 @@
 # Resonix
 
-Resonix is a Rust/Tauri desktop app for fast local audio sample browsing and previewing. It is built around a dark audio-production workflow: browse folders, inspect supported audio files, play samples quickly, view waveform peaks, and switch to a real-time spectrum analyzer while playback is running.
+Resonix is a Rust/Tauri desktop app for fast local audio sample browsing and previewing. It is built around a dark audio-production workflow: browse folders, inspect supported audio files, play samples quickly, view waveform peaks, inspect BPM estimates, and switch to a real-time spectrum analyzer while playback is running.
 
 ## Features
 
 - Browse local drives and folders from a sidebar.
 - Detect supported audio files in the selected folder.
-- Display filename, type, size, duration, sample rate, and channel count.
+- Display filename, type, size, duration, BPM, sample rate, and channel count.
+- Show compact waveform thumbnails in the file list.
 - Play, pause, stop, loop, seek, mute, dim, and adjust playback volume.
 - Render cached waveform previews for selected samples.
 - Toggle the preview area into a live spectrum analyzer from the transport bar.
+- Estimate BPM for rhythmic samples and cache the result with file metadata.
 - Mark files as favorites.
 - Restore recent app state such as theme, last directory, and selected file.
 - Cache metadata and waveform peaks in SQLite for faster repeat browsing.
 - Drag files out of the app on Windows.
+- Use a compact `RSNX` app mark rendered with the bundled Michroma font.
 
 ## Tech Stack
 
@@ -89,9 +92,12 @@ src/
   App.tsx
   App.css
   main.tsx
+  assets/
+    Michroma-Regular.ttf
 
 src-tauri/src/
   audio/
+    bpm.rs
     playback.rs
     waveform.rs
   library/
@@ -139,4 +145,4 @@ npm run tauri build
 
 ## Current Status
 
-Resonix is an early MVP. The core browsing, playback, waveform, favorites, cache, and real-time spectrum analyzer paths are in place. The codebase is intentionally still small and direct so new audio features can be added without over-engineering the architecture too early.
+Resonix is an early MVP. The core browsing, playback, waveform thumbnails, BPM estimation, favorites, cache, Windows drag-out, and real-time spectrum analyzer paths are in place. BPM detection is best-effort and may return no value for short, ambient, noisy, or low-confidence material. The codebase is intentionally still small and direct so new audio features can be added without over-engineering the architecture too early.
