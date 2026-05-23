@@ -517,7 +517,7 @@ input:focus {
 
 table {
   width: 100%;
-  min-width: 680px;
+  min-width: 760px;
   border-collapse: collapse;
 }
 
@@ -542,6 +542,30 @@ th {
 td {
   color: #d8dee8;
   font-size: 0.88rem;
+}
+
+.waveform-thumbnail-heading,
+.waveform-thumbnail-cell {
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+}
+
+.waveform-thumbnail-cell {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.waveform-thumbnail {
+  --thumbnail-background: #0e1217;
+  --thumbnail-foreground: #7f8da0;
+  --thumbnail-empty: #334155;
+  display: block;
+  width: 72px;
+  height: 22px;
+  border: 1px solid #202630;
+  border-radius: 3px;
+  background: #0e1217;
 }
 
 tbody tr {
@@ -695,6 +719,14 @@ tbody tr.selected-row td:first-child {
 .theme-light th,
 .theme-light td {
   border-color: #d5dce6;
+}
+
+.theme-light .waveform-thumbnail {
+  --thumbnail-background: #f8fafc;
+  --thumbnail-foreground: #748398;
+  --thumbnail-empty: #c5ceda;
+  border-color: #d5dce6;
+  background: #f8fafc;
 }
 
 .theme-light tbody tr:hover,

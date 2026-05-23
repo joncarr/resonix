@@ -61,6 +61,10 @@ type SpectrumCanvasProps = {
   isActive: boolean;
 };
 
+type WaveformThumbnailProps = {
+  filePath: string;
+};
+
 type ContextMenuState = {
   x: number;
   y: number;
@@ -305,6 +309,98 @@ function SpectrumCanvas({ bins, isActive }: SpectrumCanvasProps) {
   }, [bins, isActive]);
 
   return <canvas className="spectrum-canvas" ref={canvasRef} />;
+}
+
+function WaveformThumbnail({ filePath }: WaveformThumbnailProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [peaks, setPeaks] = useState<number[]>([]);
+
+  function drawThumbnail(nextPeaks: number[]) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const scale = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(rect.width * scale));
+    canvas.height = Math.max(1, Math.floor(rect.height * scale));
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+
+    const styles = getComputedStyle(canvas);
+    const background =
+      styles.getPropertyValue("--thumbnail-background").trim() || "#0e1217";
+    const foreground =
+      styles.getPropertyValue("--thumbnail-foreground").trim() || "#7f8da0";
+    const empty =
+      styles.getPropertyValue("--thumbnail-empty").trim() || "#334155";
+
+    context.clearRect(0, 0, rect.width, rect.height);
+    context.fillStyle = background;
+    context.fillRect(0, 0, rect.width, rect.height);
+
+    if (nextPeaks.length === 0) {
+      context.fillStyle = empty;
+      context.fillRect(4, rect.height / 2, rect.width - 8, 1);
+      return;
+    }
+
+    const centerY = rect.height / 2;
+    const barWidth = Math.max(1, rect.width / nextPeaks.length);
+    context.fillStyle = foreground;
+
+    nextPeaks.forEach((peak, index) => {
+      const height = Math.max(1, peak * rect.height * 0.76);
+      const x = index * barWidth;
+      const y = centerY - height / 2;
+      context.fillRect(x, y, Math.max(1, barWidth - 1), height);
+    });
+  }
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadThumbnail() {
+      try {
+        const nextPeaks = await invoke<number[]>("generate_waveform", {
+          filePath,
+          peakCount: 48,
+        });
+
+        if (!isCancelled) {
+          setPeaks(nextPeaks);
+        }
+      } catch {
+        if (!isCancelled) {
+          setPeaks([]);
+        }
+      }
+    }
+
+    setPeaks([]);
+    loadThumbnail();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [filePath]);
+
+  useEffect(() => {
+    drawThumbnail(peaks);
+  }, [peaks]);
+
+  return (
+    <canvas
+      className="waveform-thumbnail"
+      ref={canvasRef}
+      aria-hidden="true"
+    />
+  );
 }
 
 function formatTimecode(seconds: number) {
@@ -1247,6 +1343,7 @@ function App() {
           <table>
             <thead>
               <tr>
+                <th className="waveform-thumbnail-heading">Wave</th>
                 <th>Name</th>
                 <th>Type</th>
                 <th>Size</th>
@@ -1281,6 +1378,9 @@ function App() {
                   }}
                   onFocus={() => setSelectedPath(file.path)}
                 >
+                  <td className="waveform-thumbnail-cell">
+                    <WaveformThumbnail filePath={file.path} />
+                  </td>
                   <td>{file.filename}</td>
                   <td>{file.extension.toUpperCase()}</td>
                   <td>{formatBytes(file.fileSize)}</td>
