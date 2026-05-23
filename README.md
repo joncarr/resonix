@@ -20,9 +20,9 @@ Resonix is a Rust/Tauri desktop app for fast local audio sample browsing and pre
 
 ## Screenshots
 
-![Resonix dark theme waveform browser](docs/screenshots/resonix-dark.png)
+![Resonix dark theme waveform browser](https://raw.githubusercontent.com/joncarr/resonix/refs/heads/master/src/assets/rsnx_dark.jpg)
 
-![Resonix light theme waveform browser](docs/screenshots/resonix-light.png)
+![Resonix light theme waveform browser](https://raw.githubusercontent.com/joncarr/resonix/refs/heads/master/src/assets/rsnx_light.jpg)
 
 ## Tech Stack
 
