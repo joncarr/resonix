@@ -77,6 +77,7 @@ impl CacheDatabase {
                     duration_seconds REAL,
                     sample_rate INTEGER,
                     channel_count INTEGER,
+                    bpm REAL,
                     cached_at INTEGER NOT NULL
                 );
 
@@ -105,6 +106,36 @@ impl CacheDatabase {
                     value TEXT
                 );
                 ",
+            )
+            .map_err(|error| error.to_string())?;
+        self.ensure_column(&connection, "audio_metadata", "bpm", "REAL")?;
+        Ok(())
+    }
+
+    fn ensure_column(
+        &self,
+        connection: &Connection,
+        table: &str,
+        column: &str,
+        column_type: &str,
+    ) -> Result<(), String> {
+        let mut statement = connection
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .map_err(|error| error.to_string())?;
+        let columns = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|error| error.to_string())?;
+
+        for existing_column in columns {
+            if existing_column.map_err(|error| error.to_string())? == column {
+                return Ok(());
+            }
+        }
+
+        connection
+            .execute(
+                &format!("ALTER TABLE {table} ADD COLUMN {column} {column_type}"),
+                [],
             )
             .map_err(|error| error.to_string())?;
         Ok(())
@@ -238,7 +269,7 @@ impl CacheDatabase {
         connection
             .query_row(
                 "
-                SELECT filename, extension, file_size, duration_seconds, sample_rate, channel_count
+                SELECT filename, extension, file_size, duration_seconds, sample_rate, channel_count, bpm
                 FROM audio_metadata
                 WHERE path = ?1 AND file_size = ?2 AND modified_time = ?3
                 ",
@@ -252,6 +283,7 @@ impl CacheDatabase {
                         duration_seconds: row.get(3)?,
                         sample_rate: row.get::<_, Option<i64>>(4)?.map(|value| value as u32),
                         channel_count: row.get::<_, Option<i64>>(5)?.map(|value| value as usize),
+                        bpm: row.get(6)?,
                     })
                 },
             )
@@ -270,9 +302,9 @@ impl CacheDatabase {
                 "
                 INSERT INTO audio_metadata (
                     path, filename, extension, file_size, modified_time, duration_seconds,
-                    sample_rate, channel_count, cached_at
+                    sample_rate, channel_count, bpm, cached_at
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, strftime('%s', 'now'))
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, strftime('%s', 'now'))
                 ON CONFLICT(path) DO UPDATE SET
                     filename = excluded.filename,
                     extension = excluded.extension,
@@ -281,6 +313,7 @@ impl CacheDatabase {
                     duration_seconds = excluded.duration_seconds,
                     sample_rate = excluded.sample_rate,
                     channel_count = excluded.channel_count,
+                    bpm = excluded.bpm,
                     cached_at = excluded.cached_at
                 ",
                 params![
@@ -292,6 +325,7 @@ impl CacheDatabase {
                     metadata.duration_seconds,
                     metadata.sample_rate.map(i64::from),
                     metadata.channel_count.map(|value| value as i64),
+                    metadata.bpm,
                 ],
             )
             .map_err(|error| error.to_string())?;

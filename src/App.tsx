@@ -36,6 +36,7 @@ type AudioFileMetadata = {
   durationSeconds: number | null;
   sampleRate: number | null;
   channelCount: number | null;
+  bpm: number | null;
 };
 
 type FileBrowserEntry = {
@@ -846,6 +847,14 @@ function App() {
     return `${minutes}:${remainingSeconds}`;
   }
 
+  function formatBpm(bpm: number | null) {
+    if (bpm == null) {
+      return "-";
+    }
+
+    return bpm % 1 === 0 ? bpm.toFixed(0) : bpm.toFixed(1);
+  }
+
   function selectRelativeFile(offset: number) {
     if (files.length === 0) {
       return;
@@ -1348,6 +1357,7 @@ function App() {
                 <th>Type</th>
                 <th>Size</th>
                 <th>Duration</th>
+                <th>BPM</th>
                 <th>Sample Rate</th>
                 <th>Channels</th>
               </tr>
@@ -1385,6 +1395,7 @@ function App() {
                   <td>{file.extension.toUpperCase()}</td>
                   <td>{formatBytes(file.fileSize)}</td>
                   <td>{formatDuration(file.durationSeconds)}</td>
+                  <td>{formatBpm(file.bpm)}</td>
                   <td>
                     {file.sampleRate == null
                       ? "-"

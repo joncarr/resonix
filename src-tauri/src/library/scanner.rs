@@ -9,7 +9,10 @@ use symphonia::core::{
 };
 use walkdir::WalkDir;
 
-use crate::library::{database::CacheDatabase, metadata::AudioFileMetadata};
+use crate::{
+    audio::bpm,
+    library::{database::CacheDatabase, metadata::AudioFileMetadata},
+};
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "ogg"];
 
@@ -75,6 +78,7 @@ pub fn read_audio_metadata(path: &Path) -> Result<AudioFileMetadata, String> {
         .to_lowercase();
 
     let audio_details = probe_audio_details(path).unwrap_or_default();
+    let detected_bpm = bpm::detect_bpm(path);
 
     Ok(AudioFileMetadata {
         filename,
@@ -84,6 +88,7 @@ pub fn read_audio_metadata(path: &Path) -> Result<AudioFileMetadata, String> {
         duration_seconds: audio_details.duration_seconds,
         sample_rate: audio_details.sample_rate,
         channel_count: audio_details.channel_count,
+        bpm: detected_bpm,
     })
 }
 

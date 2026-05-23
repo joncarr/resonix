@@ -10,6 +10,7 @@ pub struct AudioFileMetadata {
     pub duration_seconds: Option<f64>,
     pub sample_rate: Option<u32>,
     pub channel_count: Option<usize>,
+    pub bpm: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
