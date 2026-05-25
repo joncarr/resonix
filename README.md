@@ -1,22 +1,8 @@
 # Resonix
 
-Resonix is a Rust/Tauri desktop app for fast local audio sample browsing and previewing. It is built around a dark audio-production workflow: browse folders, inspect supported audio files, play samples quickly, view waveform peaks, inspect BPM estimates, and switch to a real-time spectrum analyzer while playback is running.
+Resonix is a Rust/Tauri desktop app for browsing and previewing local audio samples quickly. It provides a compact file-browser workflow with metadata scanning, playback, waveform previews, favorites, and a real-time spectrum view.
 
-## Features
-
-- Browse local drives and folders from a sidebar.
-- Detect supported audio files in the selected folder.
-- Display filename, type, size, duration, BPM, sample rate, and channel count.
-- Show compact waveform thumbnails in the file list.
-- Play, pause, stop, loop, seek, mute, dim, and adjust playback volume.
-- Render cached waveform previews for selected samples.
-- Toggle the preview area into a live spectrum analyzer from the transport bar.
-- Estimate BPM for rhythmic samples and cache the result with file metadata.
-- Mark files as favorites.
-- Restore recent app state such as theme, last directory, and selected file.
-- Cache metadata and waveform peaks in SQLite for faster repeat browsing.
-- Drag files out of the app on Windows.
-- Use a compact `RSNX` app mark rendered with the bundled Michroma font.
+The app is early MVP software. Windows is the most exercised target today, but the codebase is intended to stay portable across Windows, Linux, and macOS where Tauri and the audio backend support it.
 
 ## Screenshots
 
@@ -24,34 +10,76 @@ Resonix is a Rust/Tauri desktop app for fast local audio sample browsing and pre
 
 ![Resonix light theme waveform browser](https://raw.githubusercontent.com/joncarr/resonix/refs/heads/master/src/assets/rsnx_light.jpg)
 
-## Tech Stack
+## Features
 
-- Tauri v2
-- Rust backend
-- React frontend
-- TypeScript
-- Vite
-- SQLite via `rusqlite`
-- Symphonia for audio metadata and waveform decoding
-- Rodio for playback
-- Walkdir for recursive folder scanning
+- Browse local drives and folders from a sidebar.
+- Detect supported audio files in selected folders.
+- Display filename, extension, size, duration, BPM, sample rate, and channels.
+- Render waveform thumbnails in the file table.
+- Show a larger cached waveform preview for the selected file.
+- Play, pause, stop, seek, loop, mute, dim, and adjust volume.
+- Toggle the preview area into a live spectrum analyzer during playback.
+- Mark files as favorites.
+- Restore app state, including theme, last directory, and selected file.
+- Cache audio metadata and waveform peaks in SQLite.
+- Drag files out of the app on Windows.
 
-## Supported Audio Formats
-
-Initial supported formats:
+## Supported Formats
 
 - WAV
 - MP3
 - FLAC
 - OGG
 
-## Development
+## Tech Stack
+
+- Tauri v2
+- Rust backend
+- React and TypeScript frontend
+- Vite
+- SQLite via `rusqlite`
+- Symphonia for metadata and waveform decoding
+- Rodio/CPAL for playback
+- Walkdir for recursive scanning
+
+## Requirements
+
+Install Rust, Node.js, and npm before working on the app.
+
+```bash
+rustup --version
+node --version
+npm --version
+```
 
 Install JavaScript dependencies:
 
 ```bash
 npm install
 ```
+
+### Linux Dependencies
+
+On Ubuntu/Debian, install the GTK/WebKit, audio, and packaging libraries used by Tauri and Rodio:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  libwebkit2gtk-4.1-dev \
+  libgtk-3-dev \
+  libayatana-appindicator3-dev \
+  libasound2-dev \
+  librsvg2-dev \
+  patchelf \
+  build-essential \
+  curl \
+  wget \
+  file
+```
+
+Package names vary by distribution. The important Linux system dependencies are WebKitGTK, GTK 3, librsvg, ALSA development headers, and standard build tooling.
+
+## Development
 
 Run the desktop app in development mode:
 
@@ -65,7 +93,7 @@ Run a frontend production build:
 npm run build
 ```
 
-Run Rust checks:
+Check the Rust backend:
 
 ```bash
 cd src-tauri
@@ -79,7 +107,7 @@ cd src-tauri
 cargo fmt
 ```
 
-Build the packaged desktop app:
+Build a packaged desktop app:
 
 ```bash
 npm run tauri build
@@ -91,7 +119,7 @@ Build artifacts are written under:
 src-tauri/target/release/bundle/
 ```
 
-## Project Structure
+## Project Layout
 
 ```text
 src/
@@ -99,7 +127,6 @@ src/
   App.css
   main.tsx
   assets/
-    Michroma-Regular.ttf
 
 src-tauri/src/
   audio/
@@ -118,37 +145,33 @@ src-tauri/src/
   main.rs
 ```
 
+## Backend Commands
+
+The frontend talks to Rust through Tauri commands. The main commands are:
+
+- `list_directory` for drive/folder browsing.
+- `scan_folder` for recursive audio scanning.
+- `generate_waveform` for waveform peak generation.
+- `play_file_with_loop`, `pause_playback`, `resume_playback`, and `stop_playback` for transport control.
+- `get_spectrum` for the live spectrum analyzer.
+- `list_favorites`, `add_favorite`, `remove_favorite`, and `is_favorite` for favorites.
+- `restore_app_state`, `remember_selected_file`, and `remember_theme` for state restore.
+- `start_file_drag` for native drag-out on Windows.
+
 ## Platform Notes
 
-Windows is the primary development target right now.
+Native file drag-out is currently implemented only for Windows. On Linux and macOS, attempting to drag a file out of the app returns an unsupported-platform error until a platform implementation is added.
 
-The app should be portable to Linux through Tauri, but native file drag-out is currently implemented only for Windows. On non-Windows platforms, the drag command returns an unsupported-platform error until a platform-specific implementation is added.
+Linux builds need ALSA development headers because playback uses Rodio/CPAL. If `cargo check` or `npm run tauri dev` fails with `alsa.pc` missing, install `libasound2-dev` or the equivalent package for your distribution.
 
-## Linux Build Dependencies
-
-On Ubuntu/Debian, a Linux build usually requires Tauri's GTK/WebKit dependencies:
+If a Linux build launches but the app window is blank, run it from a terminal so WebKitGTK or graphics-process errors are visible. On some Wayland or GPU driver combinations, WebKitGTK may need:
 
 ```bash
-sudo apt update
-sudo apt install -y \
-  libwebkit2gtk-4.1-dev \
-  libgtk-3-dev \
-  libayatana-appindicator3-dev \
-  librsvg2-dev \
-  patchelf \
-  build-essential \
-  curl \
-  wget \
-  file
+WEBKIT_DISABLE_DMABUF_RENDERER=1 npm run tauri dev
 ```
 
-Then run:
-
-```bash
-npm install
-npm run tauri build
-```
+For a packaged binary, set the same environment variable before running the app executable.
 
 ## Current Status
 
-Resonix is an early MVP. The core browsing, playback, waveform thumbnails, BPM estimation, favorites, cache, Windows drag-out, and real-time spectrum analyzer paths are in place. BPM detection is best-effort and may return no value for short, ambient, noisy, or low-confidence material. The codebase is intentionally still small and direct so new audio features can be added without over-engineering the architecture too early.
+Resonix is a small, direct MVP. Browsing, metadata caching, waveform previews, playback, BPM estimation, favorites, theme restore, Windows drag-out, and the spectrum analyzer are in place. BPM detection is best-effort and may return no value for short, ambient, noisy, or low-confidence files.
