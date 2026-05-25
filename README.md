@@ -66,18 +66,20 @@ On Ubuntu/Debian, install the GTK/WebKit, audio, and packaging libraries used by
 sudo apt update
 sudo apt install -y \
   libwebkit2gtk-4.1-dev \
-  libgtk-3-dev \
-  libayatana-appindicator3-dev \
-  libasound2-dev \
-  librsvg2-dev \
-  patchelf \
   build-essential \
   curl \
   wget \
-  file
+  file \
+  libxdo-dev \
+  libssl-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev \
+  libasound2-dev \
+  xdg-utils \
+  patchelf
 ```
 
-Package names vary by distribution. The important Linux system dependencies are WebKitGTK, GTK 3, librsvg, ALSA development headers, and standard build tooling.
+Package names vary by distribution. The important Linux system dependencies are WebKitGTK 4.1, GTK 3, librsvg, OpenSSL headers, xdo, ALSA development headers, xdg-utils, and standard build tooling.
 
 ## Development
 
@@ -107,16 +109,22 @@ cd src-tauri
 cargo fmt
 ```
 
-Build a packaged desktop app:
+Build an Ubuntu/Debian release package:
+
+```bash
+npm run tauri -- build --bundles deb
+```
+
+The `.deb` release artifact is written under:
+
+```text
+src-tauri/target/release/bundle/deb/
+```
+
+To build every configured Linux bundle target on a fully provisioned machine, run:
 
 ```bash
 npm run tauri build
-```
-
-Build artifacts are written under:
-
-```text
-src-tauri/target/release/bundle/
 ```
 
 ## Project Layout
@@ -163,6 +171,8 @@ The frontend talks to Rust through Tauri commands. The main commands are:
 Native file drag-out is currently implemented only for Windows. On Linux and macOS, attempting to drag a file out of the app returns an unsupported-platform error until a platform implementation is added.
 
 Linux builds need ALSA development headers because playback uses Rodio/CPAL. If `cargo check` or `npm run tauri dev` fails with `alsa.pc` missing, install `libasound2-dev` or the equivalent package for your distribution.
+
+AppImage bundling needs `/usr/bin/xdg-open`, which is provided by `xdg-utils` on Ubuntu/Debian. If `npm run tauri build` fails while bundling an AppImage with `xdg-open binary not found`, install `xdg-utils` or build only the Debian package with `npm run tauri -- build --bundles deb`.
 
 If a Linux build launches but the app window is blank, run it from a terminal so WebKitGTK or graphics-process errors are visible. On some Wayland or GPU driver combinations, WebKitGTK may need:
 
