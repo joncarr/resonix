@@ -1,23 +1,109 @@
 use std::path::Path;
 
-pub fn start_file_drag(file_path: &str) -> Result<(), String> {
+pub fn start_file_drag(file_path: &str, window: &tauri::WebviewWindow) -> Result<(), String> {
     let path = Path::new(file_path);
 
     if !path.is_file() {
         return Err("Drag source file does not exist.".to_string());
     }
 
-    start_native_file_drag(path)
+    start_native_file_drag(path, window)
 }
 
 #[cfg(target_os = "windows")]
-fn start_native_file_drag(path: &Path) -> Result<(), String> {
+fn start_native_file_drag(path: &Path, _window: &tauri::WebviewWindow) -> Result<(), String> {
     windows_file_drag::start(path)
 }
 
-#[cfg(not(target_os = "windows"))]
-fn start_native_file_drag(_path: &Path) -> Result<(), String> {
-    Err("Native file dragging is currently implemented for Windows only.".to_string())
+#[cfg(target_os = "linux")]
+fn start_native_file_drag(path: &Path, window: &tauri::WebviewWindow) -> Result<(), String> {
+    linux_file_drag::start(path, window)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux")))]
+fn start_native_file_drag(_path: &Path, _window: &tauri::WebviewWindow) -> Result<(), String> {
+    Err("Native file dragging is currently implemented for Windows and Linux only.".to_string())
+}
+
+#[cfg(target_os = "linux")]
+mod linux_file_drag {
+    use std::{cell::RefCell, path::Path, rc::Rc, sync::mpsc};
+
+    use gtk::prelude::*;
+
+    const URI_TARGET_INFO: u32 = 0;
+
+    pub fn start(path: &Path, window: &tauri::WebviewWindow) -> Result<(), String> {
+        let path = path
+            .canonicalize()
+            .map_err(|error| format!("Could not prepare drag path: {error}"))?;
+        let uri = glib::filename_to_uri(&path, None)
+            .map_err(|error| format!("Could not convert drag path to URI: {error}"))?
+            .to_string();
+
+        let (reply_sender, reply_receiver) = mpsc::channel();
+        let scheduled_window = window.clone();
+        let drag_window = window.clone();
+
+        scheduled_window
+            .run_on_main_thread(move || {
+                let result = start_on_main_thread(uri, &drag_window);
+                let _ = reply_sender.send(result);
+            })
+            .map_err(|error| format!("Could not schedule native file drag: {error}"))?;
+
+        reply_receiver
+            .recv()
+            .map_err(|error| format!("Could not receive native file drag result: {error}"))?
+    }
+
+    fn start_on_main_thread(uri: String, window: &tauri::WebviewWindow) -> Result<(), String> {
+        let gtk_window = window
+            .gtk_window()
+            .map_err(|error| format!("Could not access GTK window: {error}"))?;
+
+        let target_list = gtk::TargetList::new(&[]);
+        target_list.add_uri_targets(URI_TARGET_INFO);
+
+        let data_get_handler = Rc::new(RefCell::new(None));
+        let drag_end_handler = Rc::new(RefCell::new(None));
+
+        let data_get_handler_for_data = Rc::clone(&data_get_handler);
+        let data_get_id = gtk_window.connect_drag_data_get(move |_, _, selection_data, _, _| {
+            selection_data.set_uris(&[uri.as_str()]);
+        });
+        *data_get_handler_for_data.borrow_mut() = Some(data_get_id);
+
+        let data_get_handler_for_end = Rc::clone(&data_get_handler);
+        let drag_end_handler_for_end = Rc::clone(&drag_end_handler);
+        let drag_end_id = gtk_window.connect_drag_end(move |widget, _| {
+            if let Some(handler_id) = data_get_handler_for_end.borrow_mut().take() {
+                widget.disconnect(handler_id);
+            }
+
+            if let Some(handler_id) = drag_end_handler_for_end.borrow_mut().take() {
+                widget.disconnect(handler_id);
+            }
+        });
+        *drag_end_handler.borrow_mut() = Some(drag_end_id);
+
+        if gtk_window
+            .drag_begin_with_coordinates(&target_list, gdk::DragAction::COPY, 1, None, -1, -1)
+            .is_none()
+        {
+            if let Some(handler_id) = data_get_handler.borrow_mut().take() {
+                gtk_window.disconnect(handler_id);
+            }
+
+            if let Some(handler_id) = drag_end_handler.borrow_mut().take() {
+                gtk_window.disconnect(handler_id);
+            }
+
+            return Err("Native file drag could not be started.".to_string());
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(target_os = "windows")]

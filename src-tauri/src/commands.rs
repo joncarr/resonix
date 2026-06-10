@@ -150,8 +150,8 @@ pub async fn remember_theme(
 }
 
 #[tauri::command]
-pub fn start_file_drag(file_path: String) -> Result<(), String> {
-    file_drag::start_file_drag(&file_path)
+pub fn start_file_drag(file_path: String, window: tauri::WebviewWindow) -> Result<(), String> {
+    file_drag::start_file_drag(&file_path, &window)
 }
 
 #[tauri::command]

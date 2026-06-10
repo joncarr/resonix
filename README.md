@@ -22,7 +22,7 @@ The app is early MVP software. Windows is the most exercised target today, but t
 - Mark files as favorites.
 - Restore app state, including theme, last directory, and selected file.
 - Cache audio metadata and waveform peaks in SQLite.
-- Drag files out of the app on Windows.
+- Drag files out of the app on Windows and Linux.
 
 ## Supported Formats
 
@@ -164,11 +164,11 @@ The frontend talks to Rust through Tauri commands. The main commands are:
 - `get_spectrum` for the live spectrum analyzer.
 - `list_favorites`, `add_favorite`, `remove_favorite`, and `is_favorite` for favorites.
 - `restore_app_state`, `remember_selected_file`, and `remember_theme` for state restore.
-- `start_file_drag` for native drag-out on Windows.
+- `start_file_drag` for native drag-out on Windows and Linux.
 
 ## Platform Notes
 
-Native file drag-out is currently implemented only for Windows. On Linux and macOS, attempting to drag a file out of the app returns an unsupported-platform error until a platform implementation is added.
+Native file drag-out is implemented on Windows and Linux. The Linux implementation uses GTK drag-and-drop and exports files as `text/uri-list`, which works with Linux drop targets such as Bitwig Studio. macOS currently returns an unsupported-platform error until a platform implementation is added.
 
 Linux builds need ALSA development headers because playback uses Rodio/CPAL. If `cargo check` or `npm run tauri dev` fails with `alsa.pc` missing, install `libasound2-dev` or the equivalent package for your distribution.
 
@@ -184,4 +184,4 @@ For a packaged binary, set the same environment variable before running the app 
 
 ## Current Status
 
-Resonix is a small, direct MVP. Browsing, metadata caching, waveform previews, playback, BPM estimation, favorites, theme restore, Windows drag-out, and the spectrum analyzer are in place. BPM detection is best-effort and may return no value for short, ambient, noisy, or low-confidence files.
+Resonix is a small, direct MVP. Browsing, metadata caching, waveform previews, playback, BPM estimation, favorites, theme restore, Windows/Linux drag-out, and the spectrum analyzer are in place. BPM detection is best-effort and may return no value for short, ambient, noisy, or low-confidence files.
