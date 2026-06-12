@@ -79,7 +79,27 @@ sudo apt install -y \
   patchelf
 ```
 
-Package names vary by distribution. The important Linux system dependencies are WebKitGTK 4.1, GTK 3, librsvg, OpenSSL headers, xdo, ALSA development headers, xdg-utils, and standard build tooling.
+On Arch-based distributions, including Arch Linux, EndeavourOS, and Manjaro, install the equivalent packages with pacman:
+
+```bash
+sudo pacman -Syu
+sudo pacman -S --needed \
+  webkit2gtk-4.1 \
+  base-devel \
+  curl \
+  wget \
+  file \
+  openssl \
+  appmenu-gtk-module \
+  libappindicator-gtk3 \
+  librsvg \
+  xdotool \
+  alsa-lib \
+  xdg-utils \
+  patchelf
+```
+
+Package names vary by distribution. The important Linux system dependencies are WebKitGTK 4.1, GTK 3, librsvg, OpenSSL headers, xdo, ALSA development headers/runtime libraries, xdg-utils, patchelf, and standard build tooling.
 
 ## Development
 
@@ -120,6 +140,20 @@ The `.deb` release artifact is written under:
 ```text
 src-tauri/target/release/bundle/deb/
 ```
+
+Build a Linux AppImage, which is the simplest portable artifact for Arch-based systems:
+
+```bash
+npm run tauri -- build --bundles appimage
+```
+
+The AppImage release artifact is written under:
+
+```text
+src-tauri/target/release/bundle/appimage/
+```
+
+Tauri does not generate a native pacman package directly. For Arch repository or AUR distribution, create a `PKGBUILD` that builds the project from source or repackages a release artifact.
 
 To build every configured Linux bundle target on a fully provisioned machine, run:
 
